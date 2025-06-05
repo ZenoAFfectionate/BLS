@@ -1,0 +1,7 @@
+# ignore dataset
+/data/cifar-10-batches-py
+/data/cifar-100-python
+/data/MNIST
+
+# ignore pycache
+__pycache__/
