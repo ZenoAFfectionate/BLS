@@ -1,4 +1,4 @@
-# README for BLS (Broad Learning System) Implementation
+# Numpy Implementation of BLS (Broad Learning System)
 
 ## 1. Introduction to the Broad Learning System
 
