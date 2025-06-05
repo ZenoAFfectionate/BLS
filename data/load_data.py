@@ -19,10 +19,10 @@ def get_dataset(dataset_name="MNIST", batch_size=None):
             transforms.Lambda(lambda x: x.view(-1))  # Flatten images
         ])
 
-        train_set = torchvision.datasets.MNIST(
-            root='./data', train=True, transform=transform)
-        test_set = torchvision.datasets.MNIST(
-            root='./data', train=False, transform=transform)
+        train_set = torchvision.datasets.MNIST(root='./data', 
+            train=True, download=True, transform=transform)
+        test_set = torchvision.datasets.MNIST(root='./data', 
+            train=False, download=True, transform=transform)
         
         # Create data loaders
         train_loader = torch.utils.data.DataLoader(
@@ -57,10 +57,10 @@ def get_dataset(dataset_name="MNIST", batch_size=None):
             transforms.Lambda(lambda x: x.view(-1))  # Flatten images
         ])
 
-        train_set = torchvision.datasets.CIFAR10(
-            root='./data', train=True, transform=train_transform)
-        test_set = torchvision.datasets.CIFAR10(
-            root='./data', train=False,transform=test_transform)
+        train_set = torchvision.datasets.CIFAR10(root='./data', 
+            train=True, download=True, transform=transform)
+        test_set = torchvision.datasets.CIFAR10(root='./data', 
+            train=False, download=True, transform=transform)
 
         # Create data loaders
         train_loader = torch.utils.data.DataLoader(
@@ -99,11 +99,10 @@ def get_dataset(dataset_name="MNIST", batch_size=None):
             transforms.Lambda(lambda x: x.view(-1))  # Flatten images
         ])
 
-        train_set = torchvision.datasets.CIFAR100(
-            root='./data', train=True,transform=train_transform)
-
-        test_set = torchvision.datasets.CIFAR100(
-            root='./data',train=False,transform=test_transform)
+        train_set = torchvision.datasets.CIFAR100(root='./data', 
+            train=True, download=True, transform=transform)
+        test_set = torchvision.datasets.CIFAR100(root='./data', 
+            train=False, download=True, transform=transform)
 
         # Create data loaders
         train_loader = torch.utils.data.DataLoader(
