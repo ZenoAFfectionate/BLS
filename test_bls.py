@@ -23,7 +23,7 @@ parser.add_argument('--enhance_epoch', type=int, default=5)
 parser.add_argument('--enhance_nodes', type=int, default=10)
 
 parser.add_argument('--seed', type=int, default=42)
-parser.add_argument('--sparse', '-s', action='store_true', default=False)
+parser.add_argument('--sparse', '-s', action='sparsification', default=False)
 
 args = parser.parse_args()
 

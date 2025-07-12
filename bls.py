@@ -8,12 +8,13 @@ from scipy.linalg import cholesky, solve_triangular
 
 
 ACTIVATIONS = {
-    # foundamental activation functions
+    # basical activation functions
     "linear":  lambda x: x,
     "relu":    lambda x: np.maximum(0, x),
     "sigmoid": lambda x: 1 / (1 + np.exp(-x)),
     "tanh":    lambda x: np.tanh(x),
-    # advanced activation functions
+    
+    # complex activation functions
     "leaky_relu": lambda x: np.maximum(0.01 * x, x), 
     "swish": lambda x: x * (1 / (1 + np.exp(-x))),
     "mish": lambda x: x * np.tanh(np.log(1 + np.exp(x))),

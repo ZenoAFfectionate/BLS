@@ -19,9 +19,9 @@ def get_dataset(dataset_name="MNIST", batch_size=None):
             transforms.Lambda(lambda x: x.view(-1))  # Flatten images
         ])
 
-        train_set = torchvision.datasets.MNIST(root='./data', 
+        train_set = torchvision.datasets.MNIST(root='../datasets', 
             train=True, download=True, transform=transform)
-        test_set = torchvision.datasets.MNIST(root='./data', 
+        test_set = torchvision.datasets.MNIST(root='../datasets', 
             train=False, download=True, transform=transform)
         
         # Create data loaders
@@ -57,9 +57,9 @@ def get_dataset(dataset_name="MNIST", batch_size=None):
             transforms.Lambda(lambda x: x.view(-1))  # Flatten images
         ])
 
-        train_set = torchvision.datasets.CIFAR10(root='./data', 
+        train_set = torchvision.datasets.CIFAR10(root='../datasets', 
             train=True, download=True, transform=transform)
-        test_set = torchvision.datasets.CIFAR10(root='./data', 
+        test_set = torchvision.datasets.CIFAR10(root='../datasets', 
             train=False, download=True, transform=transform)
 
         # Create data loaders
@@ -80,10 +80,6 @@ def get_dataset(dataset_name="MNIST", batch_size=None):
         mean = [0.5071, 0.4867, 0.4408]
         std  = [0.2675, 0.2565, 0.2761]
 
-        if batch_size == None:
-            train_batch = 50000
-            test_batch  = 10000
-
         train_transform  = transforms.Compose([
             # transforms.RandomCrop(32, padding=4),
             # transforms.RandomHorizontalFlip(),
@@ -99,10 +95,10 @@ def get_dataset(dataset_name="MNIST", batch_size=None):
             transforms.Lambda(lambda x: x.view(-1))  # Flatten images
         ])
 
-        train_set = torchvision.datasets.CIFAR100(root='./data', 
-            train=True, download=True, transform=transform)
-        test_set = torchvision.datasets.CIFAR100(root='./data', 
-            train=False, download=True, transform=transform)
+        train_set = torchvision.datasets.CIFAR100(root='../datasets', 
+            train=True, download=True, transform=train_transform)
+        test_set = torchvision.datasets.CIFAR100(root='./.datasets', 
+            train=False, download=True, transform=test_transform)
 
         # Create data loaders
         train_loader = torch.utils.data.DataLoader(
