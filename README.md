@@ -154,6 +154,17 @@ bash scripts/run_all_experiments.sh
 | 100 | 9.63 | 9.63 | 6.72 | 21.77 | 8.18 | 8.18 | 5.09 | 18.11 |
 | 200 | 8.59 | 8.59 | 5.57 | 19.00 | 6.83 | 6.83 | 4.01 | 15.59 |
 
+## Analysis
+
+**1. BLS slightly better on balanced data, ARBN robustly better under imbalance.** On all four datasets, BLS holds a marginal edge at IF=1 (e.g., MNIST: 96.57 vs 95.12; CIFAR100: 21.39 vs 20.83). Once IF ≥ 10, ARBN consistently outperforms BLS, and the gap widens monotonically with imbalance. At IF=200, ARBN leads by +7.4% (MNIST), +3.8% (FashionMNIST), +2.3% (CIFAR10), and +1.8% (CIFAR100).
+
+**2. F1 score reveals deeper BLS weakness.** Under strong imbalance, the Acc–F1 gap is substantially larger for BLS than for ARBN. On CIFAR10 IF=200, BLS drops from Acc=22.62 to F1=14.68 (−7.9 gap), while ARBN drops from Acc=24.91 to F1=18.40 (−6.5 gap). This indicates BLS collapses more severely on tail classes, producing near-zero precision/recall for minority categories, whereas ARBN's class-aware weighting preserves better per-class fidelity.
+
+**3. ARBN is most effective at moderate-to-high imbalance (IF=10–100).** The relative gain of ARBN over BLS is largest in this regime. At extreme imbalance (IF=200), both models degrade heavily, but ARBN retains a clear edge.
+
+**4. Top-5 accuracy on CIFAR100 shows considerable headroom.** Both models achieve Top-5 roughly 2× Top-1 across all IF levels (e.g., ARBN IF=100: Top-1=9.63, Top-5=21.77). The correct class is frequently ranked in the top 5, suggesting that structural improvements to the decision layer could further close the gap to Top-1.
+
+**5. Recall ≈ Accuracy on balanced test sets.** Since the test set is class-balanced, macro-recall mathematically equals accuracy. The discrimination between models therefore lies primarily in F1 (joint precision–recall balance) and Top-5 metrics for datasets with many classes.
 
 ## Project Structure
 
