@@ -34,7 +34,7 @@ class NodeGenerator:
         self._cached_transform_params = None  # Cached big matrices
         
         # Activation function mapping
-        self.activation = ACTIVATIONS[activation]
+        self.activation = activation
 
     def orth(self, W):
         ''' Efficient orthogonalization via QR decomposition '''
@@ -72,7 +72,7 @@ class NodeGenerator:
         print('     Doing transformation and activation')
         
         if self.spW is not None:
-            return self.activation(X @ self.spW)
+            return ACTIVATIONS[self.activation](X @ self.spW)
         
         # Use cached matrices if available
         if self._cached_transform_params is None:
@@ -82,7 +82,7 @@ class NodeGenerator:
         else:
             W_big, b_big = self._cached_transform_params
         
-        return self.activation(X @ W_big + b_big)
+        return ACTIVATIONS[self.activation](X @ W_big + b_big)
 
     def update(self, otherW, otherb):
         ''' Update weights and biases '''

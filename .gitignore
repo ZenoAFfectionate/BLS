@@ -1,7 +1,30 @@
-# ignore dataset
-/data/cifar-10-batches-py
-/data/cifar-100-python
-/data/MNIST
-
-# ignore pycache
+# Byte-compiled
 __pycache__/
+*.py[cod]
+*.pyo
+
+# Model checkpoints
+*.pth
+*.tar
+*.pt
+*.pkl
+checkpoints/
+
+# Logs and runs
+logs/
+runs/
+
+# Datasets
+/home/kemove/data/
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+*.egg-info/
+dist/
+build/
