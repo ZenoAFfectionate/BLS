@@ -49,7 +49,7 @@ where $\beta \in [0, 1]$ is a single smoothing hyper-parameter:
 
 The per-sample weight for the $i$-th training instance with label $y_i$ is $w_i = w_{y_i}$. These weights are assembled into a diagonal weighting matrix:
 
-$$\mathbf{W}_d = \operatorname{diag}(w_1, \dots, w_N) \in \mathbb{R}^{N \times N}.$$
+$$\mathbf{W}_d = \mathrm{diag}(w_1, \dots, w_N) \in \mathbb{R}^{N \times N}.$$
 
 Instead of explicitly constructing weighted design matrices, ARBN incorporates the weights directly into the normal equations, yielding a weighted ridge regression objective:
 
