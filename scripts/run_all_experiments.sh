@@ -74,10 +74,15 @@ run_one() {
 
     if [ ${exit_code} -eq 0 ]; then
         local acc=$(grep "Test Accuracy" "${log_file}" | tail -1 | sed 's/.*Test Accuracy: //' | sed 's/%.*//')
-        if [ -z "${acc}" ]; then
-            acc="N/A"
-        fi
-        echo "     PASS (acc=${acc}%)"
+        local recall=$(grep "Recall (macro)" "${log_file}" | tail -1 | sed 's/.*Recall (macro): //' | sed 's/%.*//')
+        local f1=$(grep "F1 (macro)" "${log_file}" | tail -1 | sed 's/.*F1 (macro): //' | sed 's/%.*//')
+        local top5=$(grep "Top-5 Accuracy" "${log_file}" | tail -1 | sed 's/.*Top-5 Accuracy: //' | sed 's/%.*//')
+        [ -z "${acc}" ] && acc="N/A"
+        local info_str="acc=${acc}%"
+        [ -n "${recall}" ] && info_str="${info_str}, recall(m)=${recall}%"
+        [ -n "${f1}" ] && info_str="${info_str}, f1(m)=${f1}%"
+        [ -n "${top5}" ] && info_str="${info_str}, top5=${top5}%"
+        echo "     PASS (${info_str})"
         passed=$((passed + 1))
     else
         echo "     FAIL (exit code: ${exit_code})"

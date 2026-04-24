@@ -3,7 +3,7 @@ import argparse
 import numpy as np
 
 from models import BLS, ARBN
-from utils import valid_model, plot_confusion_matrix, get_cls_num_list
+from utils import valid_model, evaluate_model, print_metrics, plot_confusion_matrix, get_cls_num_list
 from loader.model_loader import load_model, store_model
 from loader.data_loader import get_dataset, extract_data, count_classes
 
@@ -127,10 +127,15 @@ print("  Finish training\n")
 def evaluate(name, X, y):
     acc = valid_model(model, X, y)
     print(f"  * Accuracy ({name}): {acc:.2f}%")
+    if name == "valid":
+        metrics = evaluate_model(model, X, y, n_classes=n_classes)
+        print_metrics(metrics, prefix=name, n_classes=n_classes)
+        return metrics
     return acc
 
 evaluate("train", X_train, y_train)
-test_acc = evaluate("valid", X_valid, y_valid)
+test_metrics = evaluate("valid", X_valid, y_valid)
+test_acc = test_metrics['accuracy'] if isinstance(test_metrics, dict) else test_metrics
 print()
 
 # ---- Incremental Enhancement ----
@@ -138,7 +143,7 @@ for epoch in range(args.enhance_epoch):
     print(f"> Incremental round {epoch + 1}/{args.enhance_epoch}")
     model.add_enhancement_nodes(X_train, y_train, args.enhance_nodes)
     evaluate("train", X_train, y_train)
-    test_acc = evaluate("valid", X_valid, y_valid)
+    _ = evaluate("valid", X_valid, y_valid)
     print()
 
 # ---- Save Model ----
@@ -153,4 +158,10 @@ imb_str = f"IF={int(args.imbalance_factor)}" if args.imbalance_factor else "bala
 print(f"  Dataset: {args.dataset} ({imb_str})")
 print(f"  Model: {model_type_str}")
 print(f"  Test Accuracy: {test_acc:.2f}%")
+if 'recall_macro' in test_metrics:
+    print(f"  Recall (macro): {test_metrics['recall_macro']:.2f}%")
+if 'f1_macro' in test_metrics:
+    print(f"  F1 (macro): {test_metrics['f1_macro']:.2f}%")
+if 'top5_accuracy' in test_metrics:
+    print(f"  Top-5 Accuracy: {test_metrics['top5_accuracy']:.2f}%")
 print("-" * 50)

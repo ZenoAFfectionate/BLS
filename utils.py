@@ -2,7 +2,12 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix as sk_confusion_matrix
+from sklearn.metrics import (
+    confusion_matrix as sk_confusion_matrix,
+    recall_score,
+    f1_score,
+    precision_score,
+)
 
 
 def valid_model(model, X, y):
@@ -12,6 +17,60 @@ def valid_model(model, X, y):
     total += y.size
     correct += (predict == y).sum().item()
     return 100 * correct / total
+
+
+def top_k_accuracy(y_true, y_proba, k=5):
+    """Compute top-k accuracy."""
+    top_k_pred = np.argsort(y_proba, axis=1)[:, -k:]
+    hits = np.array([y_true[i] in top_k_pred[i] for i in range(len(y_true))])
+    return float(np.mean(hits))
+
+
+def evaluate_model(model, X, y, n_classes):
+    """Comprehensive evaluation returning multiple metrics.
+
+    Returns a dict with accuracy, recall (macro/micro), F1 (macro/micro),
+    and top-5 accuracy (only when n_classes > 10).
+    """
+    y_pred = model.predict(X)
+    y_proba = model.predict_proba(X)
+
+    metrics = {}
+    metrics['accuracy'] = float(np.mean(y_pred == y)) * 100.0
+
+    metrics['recall_macro'] = recall_score(
+        y, y_pred, average='macro', zero_division=0) * 100.0
+    metrics['recall_micro'] = recall_score(
+        y, y_pred, average='micro', zero_division=0) * 100.0
+    metrics['precision_macro'] = precision_score(
+        y, y_pred, average='macro', zero_division=0) * 100.0
+    metrics['precision_micro'] = precision_score(
+        y, y_pred, average='micro', zero_division=0) * 100.0
+    metrics['f1_macro'] = f1_score(
+        y, y_pred, average='macro', zero_division=0) * 100.0
+    metrics['f1_micro'] = f1_score(
+        y, y_pred, average='micro', zero_division=0) * 100.0
+
+    if n_classes > 10:
+        metrics['top5_accuracy'] = top_k_accuracy(y, y_proba, k=5) * 100.0
+
+    return metrics
+
+
+def print_metrics(metrics, prefix="", n_classes=10):
+    """Pretty-print evaluation metrics."""
+    tag = f" ({prefix})" if prefix else ""
+    print(f"  --- Evaluation Results{tag} ---")
+    print(f"  * Accuracy (Top-1):     {metrics['accuracy']:.2f}%")
+    print(f"  * Precision (macro):    {metrics['precision_macro']:.2f}%")
+    print(f"  * Recall (macro):       {metrics['recall_macro']:.2f}%")
+    print(f"  * F1 (macro):           {metrics['f1_macro']:.2f}%")
+    print(f"  * Precision (micro):    {metrics['precision_micro']:.2f}%")
+    print(f"  * Recall (micro):       {metrics['recall_micro']:.2f}%")
+    print(f"  * F1 (micro):           {metrics['f1_micro']:.2f}%")
+    if n_classes > 10 and 'top5_accuracy' in metrics:
+        print(f"  * Top-5 Accuracy:       {metrics['top5_accuracy']:.2f}%")
+    print(f"  ------------------------------------")
 
 
 def plot_confusion_matrix(y_true, y_pred, classes=None, save_path=None):

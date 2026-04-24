@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 """
-解析实验日志，生成 README 格式的结果表格。
+Parse experiment logs and render markdown result tables with multiple metrics.
 
-用法: python scripts/collect_results.py [log_dir]
-输出: 每个数据集一个表格，行=IF, 列=BLS/ARBN
+Usage: python scripts/collect_results.py [log_dir]
+Output: per-dataset tables with Accuracy, Recall (macro), F1 (macro),
+        and Top-5 Accuracy (CIFAR100 only).
 """
 
 import os
@@ -12,20 +13,32 @@ import sys
 from collections import defaultdict
 
 
+METRIC_PATTERNS = {
+    'accuracy':     re.compile(r'Test Accuracy:\s*([\d.]+)'),
+    'recall_macro': re.compile(r'Recall \(macro\):\s*([\d.]+)'),
+    'f1_macro':     re.compile(r'F1 \(macro\):\s*([\d.]+)'),
+    'top5_accuracy': re.compile(r'Top-5 Accuracy:\s*([\d.]+)'),
+}
+
+
 def parse_log(filepath):
-    """从日志中提取 Test Accuracy."""
+    """Extract all metrics from a log file."""
     if not os.path.exists(filepath):
         return None
+    values = {}
     with open(filepath) as f:
         for line in f:
-            m = re.search(r'Test Accuracy:\s*([\d.]+)', line)
-            if m:
-                return float(m.group(1))
-    return None
+            for key, pattern in METRIC_PATTERNS.items():
+                if key not in values:
+                    m = pattern.search(line)
+                    if m:
+                        values[key] = float(m.group(1))
+    return values if values else None
 
 
 def collect(log_dir):
-    results = defaultdict(dict)  # (dataset, imb, model) -> acc
+    """Collect metrics from all log files in log_dir."""
+    results = defaultdict(dict)  # (dataset, imb, model) -> {metric_key: value}
     datasets = set()
     imbs = set()
     models = set()
@@ -33,7 +46,6 @@ def collect(log_dir):
     for fname in sorted(os.listdir(log_dir)):
         if not fname.endswith('.log') or fname.startswith('_'):
             continue
-        # 格式: {dataset}_{model}_IF{imb}.log
         base = fname[:-4]
         m = re.match(r'(.+)_(bls|arbn)_IF(\d+)$', base)
         if not m:
@@ -44,10 +56,17 @@ def collect(log_dir):
         imbs.add(imb)
         models.add(model)
 
-        acc = parse_log(os.path.join(log_dir, fname))
-        results[(dataset, imb, model)] = acc
+        metrics = parse_log(os.path.join(log_dir, fname))
+        results[(dataset, imb, model)] = metrics
 
     return results, sorted(datasets), sorted(imbs), sorted(models)
+
+
+def fmt(val):
+    """Format a metric value or return dash if missing."""
+    if val is None:
+        return "—"
+    return f"{val:.2f}"
 
 
 def render(results, datasets, imbs, models):
@@ -60,23 +79,32 @@ def render(results, datasets, imbs, models):
         n_classes = 100 if ds == "CIFAR100" else 10
         lines.append(f"### {ds} ({n_classes} classes)\n")
 
-        header = "| IF | " + " | ".join(f"{m.upper()} Acc (%)" for m in models) + " |"
+        # Build header
+        metric_cols = ["Acc", "Recall(m)", "F1(m)"]
+        metric_keys = ["accuracy", "recall_macro", "f1_macro"]
+        if n_classes > 10:
+            metric_cols.append("Top5")
+            metric_keys.append("top5_accuracy")
+
+        header = "| IF |"
+        sep = "| --- |"
+        for m_name in models:
+            for col in metric_cols:
+                header += f" {m_name.upper()} {col} |"
+                sep += " --- |"
         lines.append(header)
-        lines.append("|" + " --- |" * (len(models) + 1))
+        lines.append(sep)
 
         for imb in imbs:
             cells = [str(imb)]
             for model in models:
-                acc = results.get((ds, imb, model))
-                if acc is not None:
-                    cells.append(f"{acc:.2f}")
-                else:
-                    cells.append("—")
+                metrics = results.get((ds, imb, model)) or {}
+                for key in metric_keys:
+                    val = metrics.get(key)
+                    cells.append(fmt(val))
             lines.append("| " + " | ".join(cells) + " |")
 
         lines.append("")
-
-    lines.append("> 运行 `bash scripts/run_all_experiments.sh` 获取实验结果并填入表格。")
 
     return "\n".join(lines)
 
