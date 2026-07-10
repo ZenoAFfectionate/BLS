@@ -1,13 +1,13 @@
-import warnings
+#!/usr/bin/env python
+"""Main training & evaluation script for BLS / ARBN."""
+
 import argparse
 import numpy as np
 
 from models import BLS, ARBN
-from utils import valid_model, evaluate_model, print_metrics, plot_confusion_matrix, get_cls_num_list
+from utils import accuracy, evaluate_model, print_metrics
 from loader.model_loader import load_model, store_model
 from loader.data_loader import get_dataset, extract_data, count_classes
-
-warnings.filterwarnings("ignore")
 
 
 def auto_or_int(value):
@@ -18,13 +18,18 @@ def auto_or_int(value):
         return int(value)
     except ValueError:
         pass
-    raise argparse.ArgumentTypeError(f"invalid value: '{value}' (expected int or 'auto')")
+    raise argparse.ArgumentTypeError(
+        f"invalid value: '{value}' (expected int or 'auto')"
+    )
+
 
 parser = argparse.ArgumentParser(description="BLS / ARBN Training Script")
 
 # Dataset
-parser.add_argument("--dataset", type=str, default="MNIST",
-                    choices=["MNIST", "FashionMNIST", "CIFAR10", "CIFAR100"])
+parser.add_argument(
+    "--dataset", type=str, default="MNIST",
+    choices=["MNIST", "FashionMNIST", "CIFAR10", "CIFAR100"],
+)
 parser.add_argument("--data_root", type=str, default=None,
                     help="Root directory for datasets")
 parser.add_argument("--imbalance_factor", type=float, default=None,
@@ -39,12 +44,11 @@ parser.add_argument("--model", type=str, default="bls",
 parser.add_argument("--feature_times", type=int, default=10)
 parser.add_argument("--enhance_times", type=int, default=10)
 parser.add_argument("--feature_size", type=auto_or_int, default=256)
+parser.add_argument("--enhance_func", type=str, default="tanh")
 parser.add_argument("--mapping_func", type=str, default="linear")
-parser.add_argument("--enhance_func", type=str, default="relu")
 
 # Regularization
-parser.add_argument("--reg", type=float, default=0.005)
-parser.add_argument("--sig", type=float, default=0.001)
+parser.add_argument("--reg", type=float, default=0.01)
 
 # ARBN-specific
 parser.add_argument("--class_weight_beta", type=float, default=0.5,
@@ -68,7 +72,7 @@ args = parser.parse_args()
 
 np.random.seed(args.seed)
 
-# ---- Data Loading ----
+# ---- Data Loading ----------------------------------------------------------
 print(f"> Loading the dataset {args.dataset} ...", end=" ")
 train_loader, valid_loader, n_classes = get_dataset(
     args.dataset,
@@ -78,20 +82,18 @@ train_loader, valid_loader, n_classes = get_dataset(
 )
 X_train, y_train = extract_data(train_loader)
 X_valid, y_valid = extract_data(valid_loader)
-print(f"Success")
+print("Success")
 
-# Report class distribution for imbalanced setting
 cls_num_list = count_classes(y_train, n_classes)
 print(f"  Train samples: {X_train.shape[0]}, Test samples: {X_valid.shape[0]}")
 print(f"  Class distribution: min={min(cls_num_list)}, max={max(cls_num_list)}")
 
-# ---- Model Initialization ----
+# ---- Model Initialization --------------------------------------------------
 model_type_str = args.model.upper()
 print(f"\n> Initialize the {model_type_str} model ...")
 
-ModelClass = ARBN if args.model == "arbn" else BLS
-
 if args.loading:
+    ModelClass = ARBN if args.model == "arbn" else BLS
     model = load_model(ModelClass, args.dataset + "_best.pkl")
 else:
     common_kwargs = dict(
@@ -113,55 +115,52 @@ else:
             class_weight_beta=args.class_weight_beta,
         )
     else:
-        model = BLS(
-            **common_kwargs,
-            sig=args.sig,
-        )
+        model = BLS(**common_kwargs)
 
-# ---- Training ----
+# ---- Training --------------------------------------------------------------
 print("> Training model ...")
 model.fit(X_train, y_train)
 print("  Finish training\n")
 
-# ---- Evaluation ----
-def evaluate(name, X, y):
-    acc = valid_model(model, X, y)
-    print(f"  * Accuracy ({name}): {acc:.2f}%")
-    if name == "valid":
-        metrics = evaluate_model(model, X, y, n_classes=n_classes)
-        print_metrics(metrics, prefix=name, n_classes=n_classes)
-        return metrics
-    return acc
+# ---- Evaluation ------------------------------------------------------------
+train_acc = accuracy(model, X_train, y_train)
+print(f"  * Accuracy (train): {train_acc:.2f}%")
 
-evaluate("train", X_train, y_train)
-test_metrics = evaluate("valid", X_valid, y_valid)
-test_acc = test_metrics['accuracy'] if isinstance(test_metrics, dict) else test_metrics
+test_metrics = evaluate_model(model, X_valid, y_valid, n_classes=n_classes)
+print_metrics(test_metrics, prefix="valid", n_classes=n_classes)
 print()
 
-# ---- Incremental Enhancement ----
+# ---- Incremental Enhancement -----------------------------------------------
 for epoch in range(args.enhance_epoch):
     print(f"> Incremental round {epoch + 1}/{args.enhance_epoch}")
     model.add_enhancement_nodes(X_train, y_train, args.enhance_nodes)
-    evaluate("train", X_train, y_train)
-    _ = evaluate("valid", X_valid, y_valid)
+    t_acc = accuracy(model, X_train, y_train)
+    print(f"  * Accuracy (train): {t_acc:.2f}%")
+    metrics = evaluate_model(model, X_valid, y_valid, n_classes=n_classes)
+    print_metrics(metrics, prefix="valid", n_classes=n_classes)
     print()
 
-# ---- Save Model ----
+# ---- Save Model ------------------------------------------------------------
 if args.storing:
     filename = f"{args.dataset}_{args.model}_best.pkl"
     store_model(model, filename)
     print(f"  Model saved to {filename}")
 
-# ---- Final Summary ----
+# ---- Final Summary ---------------------------------------------------------
 print("-" * 50)
-imb_str = f"IF={int(args.imbalance_factor)}" if args.imbalance_factor else "balanced"
+imb_str = (
+    f"IF={int(args.imbalance_factor)}"
+    if args.imbalance_factor
+    else "balanced"
+)
+test_acc = test_metrics["accuracy"]
 print(f"  Dataset: {args.dataset} ({imb_str})")
 print(f"  Model: {model_type_str}")
 print(f"  Test Accuracy: {test_acc:.2f}%")
-if 'recall_macro' in test_metrics:
+if "recall_macro" in test_metrics:
     print(f"  Recall (macro): {test_metrics['recall_macro']:.2f}%")
-if 'f1_macro' in test_metrics:
+if "f1_macro" in test_metrics:
     print(f"  F1 (macro): {test_metrics['f1_macro']:.2f}%")
-if 'top5_accuracy' in test_metrics:
+if "top5_accuracy" in test_metrics:
     print(f"  Top-5 Accuracy: {test_metrics['top5_accuracy']:.2f}%")
 print("-" * 50)

@@ -53,7 +53,7 @@ run_one() {
 
     local feature_size=256
 
-    local cmd="python ${PROJECT_DIR}/main.py \
+    local cmd="python3 ${PROJECT_DIR}/main.py \
         --dataset ${dataset} \
         --model ${model} \
         --data_root ${DATA_ROOT} \

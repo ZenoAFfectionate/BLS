@@ -1,9 +1,10 @@
-# Byte-compiled
+# Byte-compiled / Python cache
 __pycache__/
 *.py[cod]
 *.pyo
+.pytest_cache/
 
-# Model checkpoints
+# Model checkpoints / serialization
 *.pth
 *.tar
 *.pt
@@ -13,10 +14,13 @@ checkpoints/
 # Logs and runs
 logs/
 runs/
+*.log
 
-# Datasets
-/home/kemove/data/
+# Datasets (downloaded by torchvision)
 data/
+MNIST/
+FashionMNIST/
+cifar-*/
 
 # IDE
 .vscode/
@@ -24,7 +28,27 @@ data/
 *.swp
 *.swo
 
-# Python
+# Editor / OS
+.DS_Store
+Thumbs.db
+
+# Python packaging
 *.egg-info/
 dist/
 build/
+*.egg
+
+# Environment
+.env
+.venv/
+venv/
+env/
+
+# Playwright / browser testing
+.playwright-cli/
+
+# Temporary files
+*.yaml
+*.yml
+!*.yml.example
+screenshots/

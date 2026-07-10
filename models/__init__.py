@@ -1,3 +1,4 @@
-from .arbn import ARBN, BLS
+from .bls import BLS
+from .arbn import ARBN
 
-__all__ = ["ARBN", "BLS"]
+__all__ = ["BLS", "ARBN"]

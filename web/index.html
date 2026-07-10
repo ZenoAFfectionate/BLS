@@ -1,0 +1,1658 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BLS — Broad Learning System · 推理过程可视化</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%235b9cf6'/><text x='16' y='23' text-anchor='middle' font-size='18' font-weight='700' fill='%230d1117' font-family='sans-serif'>B</text></svg>">
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+/* ====================================================================== */
+/*  Design Tokens                                                         */
+/* ====================================================================== */
+:root {
+  /* — Background layers (deep neutral gray, not pure black) — */
+  --bg-page:      #0d1117;
+  --bg-panel:     #11161e;
+  --bg-card:      #161c26;
+  --bg-elevated:  #1d2530;
+  --bg-hover:     #232c38;
+  --bg-input:     #0f141b;
+
+  /* — Borders (low-opacity strokes) — */
+  --border:        rgba(148, 163, 184, 0.10);
+  --border-strong: rgba(148, 163, 184, 0.16);
+  --border-active: rgba(91, 156, 246, 0.30);
+
+  /* — Primary accent (professional blue-cyan, low saturation) — */
+  --accent:        #5b9cf6;
+  --accent-hover:  #6db0ff;
+  --accent-dim:    rgba(91, 156, 246, 0.12);
+  --accent-subtle: rgba(91, 156, 246, 0.06);
+
+  /* — Node-type colors — */
+  --c-feature:  #5b9cf6;   /* blue  — feature nodes   */
+  --c-enhance:  #3ec7a8;   /* teal  — enhancement     */
+  --c-concat:   #e0a458;   /* amber — concatenation   */
+  --c-result:   #6ec5e0;   /* cyan  — output/result   */
+
+  /* — Status — */
+  --success: #3ec7a8;
+  --warning: #e0a458;
+  --danger:  #e57373;
+
+  /* — Text (strict 3-level hierarchy) — */
+  --text:          #dde3ec;
+  --text-secondary:#8b95a3;
+  --text-tertiary: #5e6875;
+
+  /* — Typography — */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+
+  /* — Radii — */
+  --r-sm: 5px;
+  --r-md: 7px;
+  --r-lg: 10px;
+  --r-xl: 14px;
+
+  /* — Shadows — */
+  --shadow-card:    0 1px 3px rgba(0,0,0,0.25), 0 0 0 1px var(--border);
+  --shadow-elevated:0 4px 16px rgba(0,0,0,0.30), 0 0 0 1px var(--border-strong);
+  --shadow-active:  0 0 0 1px var(--border-active), 0 0 12px rgba(91,156,246,0.08);
+
+  /* — Transitions — */
+  --t-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --t-base: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ====================================================================== */
+/*  Reset & Base                                                          */
+/* ====================================================================== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg-page);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.25); }
+
+/* ====================================================================== */
+/*  Animations — subtle, purposeful                                       */
+/* ====================================================================== */
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes flowDash { to { stroke-dashoffset: -16; } }
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes softPulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+.anim-fade { animation: fadeIn 0.35s ease-out; }
+.anim-soft-pulse { animation: softPulse 2.5s ease-in-out infinite; }
+
+/* ====================================================================== */
+/*  Spinner                                                               */
+/* ====================================================================== */
+.spinner {
+  width: 32px; height: 32px;
+  border: 2.5px solid var(--border-strong);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+/* ====================================================================== */
+/*  Cards                                                                 */
+/* ====================================================================== */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  transition: border-color var(--t-base);
+}
+.card:hover { border-color: var(--border-strong); }
+
+.card-accent {
+  background: var(--accent-subtle);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--r-md);
+  padding: 12px 14px;
+}
+
+/* ====================================================================== */
+/*  Buttons                                                               */
+/* ====================================================================== */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 7px 14px;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: all var(--t-fast);
+  border: 1px solid transparent;
+  outline: none;
+  white-space: nowrap;
+  user-select: none;
+}
+.btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.btn-primary {
+  background: var(--accent);
+  color: #0d1117;
+  font-weight: 600;
+  border-color: var(--accent);
+}
+.btn-primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+.btn-primary:active { transform: translateY(0.5px); }
+.btn-primary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-secondary {
+  background: var(--bg-elevated);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.btn-secondary:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-active);
+}
+.btn-secondary:active { transform: translateY(0.5px); }
+.btn-secondary:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.btn-toggle {
+  background: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border);
+  font-size: 11px;
+  padding: 5px 10px;
+}
+.btn-toggle:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+.btn-toggle.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--border-active);
+}
+
+/* ====================================================================== */
+/*  Step Navigation                                                       */
+/* ====================================================================== */
+.step-nav { display: flex; flex-direction: column; gap: 1px; }
+
+.step-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  padding: 7px 8px;
+  cursor: pointer;
+  border-radius: var(--r-md);
+  transition: background var(--t-fast);
+  position: relative;
+}
+.step-item:hover { background: var(--bg-elevated); }
+.step-item.active { background: var(--accent-dim); }
+
+.step-dot {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 1px;
+  border: 1.5px solid var(--border-strong);
+  background: var(--bg-page);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700;
+  font-family: var(--font-mono);
+  color: var(--text-tertiary);
+  transition: all var(--t-base);
+  z-index: 1;
+}
+.step-item.active .step-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #0d1117;
+  box-shadow: 0 0 0 3px var(--accent-dim);
+}
+.step-item.done .step-dot {
+  border-color: var(--success);
+  background: var(--success);
+  color: #0d1117;
+}
+.step-item.done .step-dot::after {
+  content: '✓';
+  font-size: 10px;
+}
+
+.step-connector {
+  position: absolute;
+  left: 17px;
+  top: 28px;
+  bottom: -8px;
+  width: 1px;
+  background: var(--border-strong);
+  z-index: 0;
+}
+.step-item.done .step-connector { background: var(--success); opacity: 0.4; }
+.step-item:last-child .step-connector { display: none; }
+
+/* ====================================================================== */
+/*  Heatmap cells                                                         */
+/* ====================================================================== */
+.heat-cell { transition: transform var(--t-fast); border-radius: 1px; }
+.heat-cell:hover { transform: scale(1.6); z-index: 10; }
+.heat-legend {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, rgba(229,115,115,0.6), rgba(148,163,184,0.15), rgba(91,156,246,0.7));
+}
+
+/* ====================================================================== */
+/*  Slider                                                                */
+/* ====================================================================== */
+.param-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 3px;
+  background: var(--border-strong);
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+.param-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 13px; height: 13px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg-card);
+  box-shadow: 0 0 0 1px var(--accent);
+  transition: transform var(--t-fast);
+}
+.param-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+.param-slider::-moz-range-thumb {
+  width: 13px; height: 13px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg-card);
+}
+
+/* ====================================================================== */
+/*  Flow arrow                                                            */
+/* ====================================================================== */
+.flow-arrow {
+  display: inline-block;
+  width: 0; height: 0;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  border-left: 7px solid var(--text-tertiary);
+  flex-shrink: 0;
+}
+
+/* ====================================================================== */
+/*  Upload zone                                                           */
+/* ====================================================================== */
+.upload-zone {
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-md);
+  transition: all var(--t-base);
+}
+.upload-zone:hover {
+  border-color: var(--border-active);
+  background: var(--accent-subtle);
+}
+.upload-zone.drag-over {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+}
+
+/* ====================================================================== */
+/*  Sample cards                                                          */
+/* ====================================================================== */
+.sample-card {
+  cursor: pointer;
+  border-radius: var(--r-md);
+  padding: 8px 4px;
+  text-align: center;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  transition: all var(--t-fast);
+}
+.sample-card:hover {
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+}
+.sample-card.selected {
+  border-color: var(--border-active);
+  background: var(--accent-dim);
+}
+
+/* ====================================================================== */
+/*  Stat mini                                                             */
+/* ====================================================================== */
+.stat-mini {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 9px 11px;
+  text-align: center;
+  transition: border-color var(--t-fast);
+}
+.stat-mini:hover { border-color: var(--border-strong); }
+
+/* ====================================================================== */
+/*  Section labels                                                        */
+/* ====================================================================== */
+.section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  margin-bottom: 10px;
+}
+
+/* ====================================================================== */
+/*  Stage badge                                                           */
+/* ====================================================================== */
+.stage-badge {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--r-sm);
+}
+
+/* ====================================================================== */
+/*  Detail rows                                                           */
+/* ====================================================================== */
+.detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+}
+.detail-row:last-child { border-bottom: none; }
+.detail-row .label { font-size: 11px; color: var(--text-secondary); }
+.detail-row .value { font-size: 11px; font-family: var(--font-mono); color: var(--text); }
+
+/* ====================================================================== */
+/*  Formula block                                                         */
+/* ====================================================================== */
+.formula-block {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px 12px;
+  margin-top: 12px;
+}
+.formula-block .formula-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent);
+  margin-bottom: 5px;
+}
+.formula-block code {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--c-feature);
+  line-height: 1.6;
+}
+
+/* ====================================================================== */
+/*  Progress bar (probabilities)                                         */
+/* ====================================================================== */
+.prob-bar-track {
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bg-input);
+  overflow: hidden;
+}
+.prob-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+</style>
+</head>
+<body class="flex flex-col h-screen">
+
+<!-- ====================================================================== -->
+<!--  HEADER                                                                 -->
+<!-- ====================================================================== -->
+<header class="flex items-center justify-between px-5 py-3 flex-shrink-0" style="background:var(--bg-panel);border-bottom:1px solid var(--border)">
+  <div class="flex items-center gap-3">
+    <div class="w-7 h-7 rounded-md flex items-center justify-center text-sm font-bold" style="background:var(--accent);color:#0d1117">B</div>
+    <div>
+      <div class="text-sm font-semibold tracking-tight" style="color:var(--text)">BLS 推理可视化</div>
+      <div class="text-xs font-mono" style="color:var(--text-tertiary)">Broad Learning System · Inference Pipeline</div>
+    </div>
+  </div>
+  <div class="flex items-center gap-3">
+    <div class="text-xs font-mono px-2.5 py-1 rounded-md" style="background:var(--bg-card);border:1px solid var(--border)">
+      <span id="stageLabel" style="color:var(--accent)">1</span><span style="color:var(--text-tertiary)"> / 5</span>
+    </div>
+    <div class="text-xs font-medium" id="stageTitle" style="color:var(--text-secondary);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">输入预处理</div>
+    <div id="timingBadge" class="text-xs font-mono px-2.5 py-1 rounded-md flex items-center gap-1" style="display:none;background:var(--accent-dim);border:1px solid var(--border-active);color:var(--accent)"></div>
+  </div>
+</header>
+
+<!-- ====================================================================== -->
+<!--  MAIN LAYOUT                                                            -->
+<!-- ====================================================================== -->
+<main class="flex-1 flex overflow-hidden">
+
+  <!-- ─── LEFT PANEL ────────────────────────────────────────────────── -->
+  <aside class="flex-shrink-0 overflow-y-auto flex flex-col gap-5 p-4"
+         style="width:280px;background:var(--bg-panel);border-right:1px solid var(--border)">
+
+    <!-- Samples -->
+    <section>
+      <div class="section-label">Samples</div>
+      <div class="grid grid-cols-3 gap-1.5" id="sampleGrid">
+        <!-- filled by JS -->
+      </div>
+      <div id="uploadZone" class="upload-zone p-2.5 text-center cursor-pointer mt-2" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleUpload(this)">
+        <div class="text-xs" style="color:var(--text-tertiary)">拖拽图片或点击上传</div>
+      </div>
+    </section>
+
+    <!-- Stage nav -->
+    <section class="flex-1">
+      <div class="section-label">Pipeline</div>
+      <div id="stepNav" class="step-nav"></div>
+    </section>
+
+    <!-- Param sliders -->
+    <section>
+      <div class="section-label">Parameters</div>
+      <div class="space-y-3">
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span style="color:var(--text-secondary)">Feature Groups</span>
+            <span class="font-mono" style="color:var(--accent)" id="valFt">10</span>
+          </div>
+          <input type="range" class="param-slider" min="2" max="20" value="10" oninput="onParamChange('feature_times',+this.value)">
+        </div>
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span style="color:var(--text-secondary)">Enhance Groups</span>
+            <span class="font-mono" style="color:var(--accent)" id="valEt">10</span>
+          </div>
+          <input type="range" class="param-slider" min="2" max="20" value="10" oninput="onParamChange('enhance_times',+this.value)">
+        </div>
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span style="color:var(--text-secondary)">Feature Size</span>
+            <span class="font-mono" style="color:var(--accent)" id="valFs">256</span>
+          </div>
+          <input type="range" class="param-slider" min="32" max="512" value="256" step="32" oninput="onParamChange('feature_size',+this.value)">
+        </div>
+        <div>
+          <div class="flex justify-between text-xs mb-1.5">
+            <span style="color:var(--text-secondary)">Reg λ</span>
+            <span class="font-mono" style="color:var(--accent)" id="valReg">0.010</span>
+          </div>
+          <input type="range" class="param-slider" min="1" max="100" value="10" oninput="onParamChange('reg',this.value/1000)">
+        </div>
+        <button class="btn btn-primary w-full" onclick="runInference()">Run Inference</button>
+      </div>
+    </section>
+
+    <!-- Controls -->
+    <section>
+      <div class="section-label">Controls</div>
+      <div class="flex gap-1.5 mb-2">
+        <button class="btn btn-secondary flex-1" id="btnPrev" onclick="prevStep()">◀ Prev</button>
+        <button class="btn btn-primary flex-1" id="btnNext" onclick="nextStep()">Next ▶</button>
+      </div>
+      <div class="flex gap-1.5 mb-2.5">
+        <button class="btn btn-secondary flex-1" id="btnAuto" onclick="toggleAutoPlay()">▶ Auto Play</button>
+        <button class="btn btn-secondary" style="padding:7px 12px" onclick="resetAll()">↺</button>
+      </div>
+      <div class="flex items-center gap-1">
+        <span class="text-xs mr-1" style="color:var(--text-tertiary)">Speed</span>
+        <button class="btn btn-toggle flex-1" id="spd05" onclick="setSpeed(0.5)">0.5×</button>
+        <button class="btn btn-toggle active flex-1" id="spd10" onclick="setSpeed(1)">1×</button>
+        <button class="btn btn-toggle flex-1" id="spd20" onclick="setSpeed(2)">2×</button>
+      </div>
+      <div class="mt-3 pt-3" style="border-top:1px solid var(--border)">
+        <div class="section-label" style="margin-bottom:6px">Shortcuts</div>
+        <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+          <span style="color:var(--text-tertiary)">← →</span><span class="font-mono" style="color:var(--text-secondary)">navigate</span>
+          <span style="color:var(--text-tertiary)">Space</span><span class="font-mono" style="color:var(--text-secondary)">auto-play</span>
+          <span style="color:var(--text-tertiary)">R</span><span class="font-mono" style="color:var(--text-secondary)">reset</span>
+        </div>
+      </div>
+    </section>
+  </aside>
+
+  <!-- ─── CENTER PANEL ─────────────────────────────────────────────── -->
+  <section class="flex-1 overflow-y-auto" id="mainCanvas" style="background:var(--bg-page)">
+    <div class="flex flex-col items-center justify-center h-full gap-3" style="min-height:60vh" id="welcome">
+      <div class="spinner"></div>
+      <div class="text-sm font-medium" style="color:var(--text-secondary)">Initializing BLS Demo System…</div>
+    </div>
+  </section>
+
+  <!-- ─── RIGHT PANEL ─────────────────────────────────────────────── -->
+  <aside class="flex-shrink-0 overflow-y-auto p-4" id="rightPanel"
+         style="width:320px;background:var(--bg-panel);border-left:1px solid var(--border)">
+    <div class="section-label">Details</div>
+    <div id="paramDetails"><div class="text-xs" style="color:var(--text-tertiary)">Select a stage to view details</div></div>
+  </aside>
+
+</main>
+
+<!-- ====================================================================== -->
+<!--  JAVASCRIPT                                                            -->
+<!-- ====================================================================== -->
+<script>
+// =========================================================================
+//  Constants & State
+// =========================================================================
+const CLASSES = ['airplane','auto','bird','cat','deer','dog','frog','horse','ship','truck'];
+const EMOJIS  = ['✈️','🚗','🐦','🐱','🦌','🐶','🐸','🐴','🚢','🚛'];
+const STAGES = [
+  { id:1, title:'Input Preprocessing',  desc:'Image → Normalize → Flatten' },
+  { id:2, title:'Feature Node Generation', desc:'Random mapping → ReLU → Zⁿ' },
+  { id:3, title:'Enhancement Node Gen', desc:'Concat → tanh + GS → Hᵐ' },
+  { id:4, title:'Output Mapping',       desc:'Zⁿ ⊕ Hᵐ → A → Logits' },
+  { id:5, title:'Classification Result', desc:'Softmax → Confidence' },
+];
+
+// Hex colors for helper functions that need alpha suffixes (8-digit hex)
+const HEX = {
+  accent:  '#5b9cf6',
+  feature: '#5b9cf6',
+  enhance: '#3ec7a8',
+  concat:  '#e0a458',
+  result:  '#6ec5e0',
+};
+
+let STATE = {
+  currentStage:0, autoPlaying:false, autoTimer:null, speed:1500,
+  inferenceData:null, sample:'frog',
+  params: { feature_times:10, enhance_times:10, feature_size:256, reg:0.01 },
+};
+let _chart=null;
+let _chart2=null;  // second chart instance (for distribution histograms)
+function _destroyChart(){
+  if(_chart){_chart.destroy();_chart=null;}
+  if(_chart2){_chart2.destroy();_chart2=null;}
+}
+
+// =========================================================================
+//  Statistical Helpers (Tier 1+2 from IMPROVEMENT.md §10.6.3)
+// =========================================================================
+
+/** Equal-width histogram binning. Returns {bins, counts} for Chart.js. */
+function histogram(values, numBins=12, lo=null, hi=null) {
+  const min = lo ?? Math.min(...values);
+  const max = hi ?? Math.max(...values);
+  const binWidth = (max - min) / numBins || 1;
+  const bins = [];
+  const counts = new Array(numBins).fill(0);
+  for (let i = 0; i < numBins; i++)
+    bins.push((min + i * binWidth + binWidth / 2).toFixed(3));
+  for (const v of values) {
+    const idx = Math.min(numBins - 1, Math.max(0, Math.floor((v - min) / binWidth)));
+    counts[idx]++;
+  }
+  return { bins, counts };
+}
+
+/** Per-group statistics: mean, std, min, max, sparsityRate (ReLU), satPos/NegRate (tanh). */
+function groupStats(values) {
+  const n = values.length;
+  let sum = 0;
+  for (const v of values) sum += v;
+  const mean = sum / n;
+  let varSum = 0, sparsity = 0, satPos = 0, satNeg = 0;
+  let mn = Infinity, mx = -Infinity;
+  for (const v of values) {
+    varSum += (v - mean) ** 2;
+    if (v < 1e-8) sparsity++;
+    if (v > 0.9) satPos++;
+    if (v < -0.9) satNeg++;
+    if (v < mn) mn = v;
+    if (v > mx) mx = v;
+  }
+  return {
+    mean, std: Math.sqrt(varSum / n),
+    min: mn, max: mx,
+    sparsityRate: sparsity / n,
+    satPosRate: satPos / n,
+    satNegRate: satNeg / n,
+    satTotalRate: (satPos + satNeg) / n,
+  };
+}
+
+/** Render a 2D heatmap matrix (10 rows × samplesPerGroup cols) via div grid. */
+function renderHeatmapMatrix(container, groups, samplesPerGroup, colorFn) {
+  const html = groups.map((g, gi) => {
+    const step = Math.max(1, Math.floor(g.output.length / samplesPerGroup));
+    const sampled = [];
+    for (let i = 0; i < g.output.length && sampled.length < samplesPerGroup; i += step)
+      sampled.push(g.output[i]);
+    const cells = sampled.map(v => {
+      const c = colorFn(v);
+      return `<div class="heat-cell" style="width:8px;height:8px;background:${c}" title="${v.toFixed(3)}"></div>`;
+    }).join('');
+    return `<div class="flex items-center gap-1.5">
+      <span class="text-xs font-mono" style="width:22px;color:var(--text-secondary)">G${gi+1}</span>
+      <div class="flex gap-px">${cells}</div>
+    </div>`;
+  }).join('');
+  container.innerHTML = html;
+}
+
+/** Chart.js default style overrides */
+const CHART_FONT_SANS = 'Inter, system-ui, sans-serif';
+const CHART_FONT_MONO = 'JetBrains Mono, monospace';
+const CHART_GRID = 'rgba(148,163,184,0.08)';
+const CHART_TICK = '#8b95a3';
+
+// =========================================================================
+//  Mock Data Generator (Fast)
+// =========================================================================
+function generateMockInference(seed=42) {
+  let s=seed; const nxt=()=>{s=(s*16807)%2147483647;return(s-1)/2147483646;};
+  const gauss=()=>{const u1=Math.max(nxt(),1e-10),u2=nxt();return Math.sqrt(-2*Math.log(u1))*Math.cos(2*Math.PI*u2);};
+  const {feature_times:ft, enhance_times:et, feature_size:fs}=STATE.params;
+  const inputDim=3072;
+
+  // --- 1. Input vector (normalized image, ~N(0,0.25)) ---
+  // Create a structured signal: a few "prototype" components + noise
+  // This simulates real image features that carry class-discriminative information.
+  const nPrototypes=8;
+  const prototypes=[];
+  for(let p=0;p<nPrototypes;p++){
+    const proto=new Float32Array(Math.min(128, inputDim));
+    for(let i=0;i<proto.length;i++) proto[i]=gauss();
+    prototypes.push(proto);
+  }
+  // Input = weighted sum of prototypes projected into inputDim + noise
+  const protoWeights=[];
+  for(let p=0;p<nPrototypes;p++) protoWeights.push(0.5+nxt()*0.8);
+
+  const inputVec=new Array(inputDim);
+  for(let i=0;i<inputDim;i++){
+    let val=gauss()*0.15; // base noise
+    // Each prototype occupies a slice of inputDim
+    const protoIdx=Math.floor(i/(inputDim/nPrototypes));
+    if(protoIdx<nPrototypes){
+      const proto=prototypes[protoIdx];
+      const localIdx=i-protoIdx*Math.floor(inputDim/nPrototypes);
+      if(localIdx<proto.length){
+        val+=proto[localIdx]*protoWeights[protoIdx]*0.6;
+      }
+    }
+    inputVec[i]=val;
+  }
+  let imin=Infinity,imax=-Infinity,isum=0;
+  for(let i=0;i<inputDim;i++){const v=inputVec[i];if(v<imin)imin=v;if(v>imax)imax=v;isum+=v;}
+
+  // --- 2. Feature Nodes: X·Wᵢ+βᵢ → ReLU ---
+  // Each group applies a fixed random weight matrix to input.
+  // Using MANY input dims per feature → strong X→Z dependency.
+  const fg=[];
+  const ff=new Float32Array(ft*fs);
+  const termsPerFeature=Math.min(64, Math.floor(inputDim/ft)); // 64 input dims per feature
+  for(let i=0;i<ft;i++){
+    const bias=nxt()*0.5-0.25;
+    const scale=1.0/Math.sqrt(termsPerFeature); // He init
+    const wIdx=new Int32Array(fs*termsPerFeature);
+    const wSign=new Float32Array(fs*termsPerFeature);
+    for(let j=0;j<fs*termsPerFeature;j++){
+      wIdx[j]=Math.floor(nxt()*inputDim);
+      wSign[j]=nxt()>0.5?1:-1;
+    }
+    const out=new Array(fs);
+    for(let j=0;j<fs;j++){
+      let sum=bias;
+      for(let t=0;t<termsPerFeature;t++){
+        const idx=wIdx[j*termsPerFeature+t];
+        sum+=inputVec[idx]*wSign[j*termsPerFeature+t]*scale;
+      }
+      out[j]=Math.max(0,sum);
+    }
+    fg.push({output:Array.from(out)});
+    ff.set(out,i*fs);
+  }
+  let fmin=Infinity,fmax=-Infinity;
+  for(let i=0;i<ff.length;i++){const v=ff[i];if(v<fmin)fmin=v;if(v>fmax)fmax=v;}
+
+  // --- 3. Enhancement Nodes: Zⁿ·Wⱼ+γⱼ → tanh → Gram-Schmidt ---
+  // Enhancement takes Feature output (Zⁿ) as input via fixed random weights.
+  // Using many feature dims per enhancement → strong Z→H dependency.
+  const zDim=ft*fs;
+  const eg=[];
+  const ef=new Float32Array(et*fs);
+  const enhTerms=Math.min(48, Math.floor(zDim/et)); // 48 feature dims per enhancement
+  for(let i=0;i<et;i++){
+    const bias=nxt()*0.1-0.05;
+    const scale=2.5/Math.sqrt(enhTerms); // higher scale for visible saturation
+    const wIdx=new Int32Array(fs*enhTerms);
+    const wSign=new Float32Array(fs*enhTerms);
+    for(let j=0;j<fs*enhTerms;j++){
+      wIdx[j]=Math.floor(nxt()*zDim);
+      wSign[j]=nxt()>0.5?1:-1;
+    }
+    const out=new Array(fs);
+    for(let j=0;j<fs;j++){
+      let sum=bias;
+      for(let t=0;t<enhTerms;t++){
+        const idx=wIdx[j*enhTerms+t];
+        sum+=ff[idx]*wSign[j*enhTerms+t]*scale;
+      }
+      out[j]=Math.tanh(sum);
+    }
+    // Gram-Schmidt rotation for decorrelation
+    const mixAngle=nxt()*Math.PI;
+    for(let j=0;j<fs;j+=2){
+      if(j+1<fs){
+        const a=out[j], b=out[j+1];
+        out[j]   = a*Math.cos(mixAngle) - b*Math.sin(mixAngle);
+        out[j+1] = a*Math.sin(mixAngle) + b*Math.cos(mixAngle);
+      }
+    }
+    for(let j=0;j<fs;j++) out[j]=Math.max(-1,Math.min(1,out[j]));
+    eg.push({output:Array.from(out)});
+    ef.set(out,i*fs);
+  }
+  let emin=Infinity,emax=-Infinity;
+  for(let i=0;i<ef.length;i++){const v=ef[i];if(v<emin)emin=v;if(v>emax)emax=v;}
+
+  const totalDim=ft*fs+et*fs;
+  const totalFeatures=new Float32Array(totalDim);
+  totalFeatures.set(ff,0); totalFeatures.set(ef,ft*fs);
+
+  // --- 4. Logits: A·W* (derived from total features) ---
+  // W* is the ridge solution — top class has higher weights on discriminative features
+  const nClasses=10, favClass=seed%nClasses;
+  const logits=new Array(nClasses);
+  for(let c=0;c<nClasses;c++){
+    let sum=(nxt()-0.5)*0.3;
+    // Each class samples different feature dimensions
+    const step=Math.max(1,Math.floor(totalDim/80));
+    const classOffset=c*7; // different starting point per class
+    for(let p=0;p<totalDim;p+=step){
+      const w=(nxt()-0.5)*0.4;
+      sum+=totalFeatures[(p+classOffset)%totalDim]*w;
+    }
+    logits[c]=sum;
+  }
+  // Boost favored class (simulates discriminative W*)
+  logits[favClass]+=2.5+nxt()*2;
+  const mx=Math.max(...logits), ex=logits.map(l=>Math.exp(l-mx));
+  const se=ex.reduce((a,b)=>a+b,0), probs=ex.map(e=>e/se);
+  const top=probs.indexOf(Math.max(...probs));
+
+  return {
+    inputDim, inputVec:Array.from(inputVec), inputMin:imin, inputMax:imax, inputMean:isum/inputDim,
+    featureGroups:fg, featureFlat:Array.from(ff), fMin:fmin, fMax:fmax,
+    enhanceGroups:eg, enhanceFlat:Array.from(ef), eMin:emin, eMax:emax,
+    totalFeatures:Array.from(totalFeatures), totalDim,
+    nClasses, logits, probs, top,
+  };
+}
+
+// =========================================================================
+//  Parameter Change → Auto re-run
+// =========================================================================
+function onParamChange(key, val) {
+  STATE.params[key] = val;
+  document.getElementById('valFt').textContent = STATE.params.feature_times;
+  document.getElementById('valEt').textContent = STATE.params.enhance_times;
+  document.getElementById('valFs').textContent = STATE.params.feature_size;
+  document.getElementById('valReg').textContent = STATE.params.reg.toFixed(3);
+}
+
+// =========================================================================
+//  Sample / Upload
+// =========================================================================
+function initSamples() {
+  const names = ['cat','dog','frog','car','ship','bird'];
+  const grid = document.getElementById('sampleGrid');
+  grid.innerHTML = names.map(n => `
+    <div class="sample-card ${STATE.sample===n?'selected':''}" data-sample="${n}" onclick="selectSample('${n}')">
+      <div class="text-lg">${({cat:'🐱',dog:'🐶',frog:'🐸',car:'🚗',ship:'🚢',bird:'🐦'})[n]}</div>
+      <div class="text-xs mt-0.5" style="color:var(--text-secondary)">${n}</div>
+    </div>
+  `).join('');
+}
+function selectSample(name) {
+  STATE.sample = name;
+  document.querySelectorAll('.sample-card').forEach(c=>c.classList.toggle('selected',c.dataset.sample===name));
+  runInference();
+}
+function handleUpload(input){ const f=input.files[0]; if(f)runInference(); }
+
+// Drag-drop
+document.addEventListener('DOMContentLoaded',()=>{
+  const z=document.getElementById('uploadZone');
+  z.addEventListener('dragover',e=>{e.preventDefault();z.classList.add('drag-over')});
+  z.addEventListener('dragleave',()=>z.classList.remove('drag-over'));
+  z.addEventListener('drop',e=>{e.preventDefault();z.classList.remove('drag-over');if(e.dataTransfer.files[0])runInference();});
+});
+
+// =========================================================================
+//  Inference
+// =========================================================================
+function runInference() {
+  const canvas=document.getElementById('mainCanvas');
+  const right=document.getElementById('paramDetails');
+  canvas.innerHTML=`<div class="flex flex-col items-center justify-center h-full gap-3"><div class="spinner"></div><div class="text-sm" style="color:var(--text-secondary)">Running BLS inference…</div></div>`;
+  right.innerHTML=`<div class="text-xs" style="color:var(--text-tertiary)">Computing…</div>`;
+
+  setTimeout(()=>{
+    const t0=performance.now();
+    STATE.inferenceData=generateMockInference(Math.floor(Math.random()*10000));
+    STATE.inferenceData.timingMs=(performance.now()-t0).toFixed(1);
+    const badge=document.getElementById('timingBadge');
+    badge.textContent='⚡ '+STATE.inferenceData.timingMs+' ms'; badge.style.display='';
+    _destroyChart();
+    STATE.currentStage=0; stopAutoPlay(); goToStage(1);
+  },60);
+}
+
+// =========================================================================
+//  Navigation
+// =========================================================================
+function renderStepNav(){
+  const nav=document.getElementById('stepNav');
+  nav.innerHTML=STAGES.map((s,i)=>{
+    const isActive = STATE.currentStage===s.id;
+    const isDone = STATE.currentStage>s.id;
+    const numText = isDone ? '' : s.id;
+    return `
+    <div class="step-item ${isActive?'active':''} ${isDone?'done':''}" onclick="stopAutoPlay();goToStage(${s.id})">
+      <div class="step-dot">${numText}</div>
+      ${i<STAGES.length-1?`<div class="step-connector"></div>`:''}
+      <div class="flex-1 min-w-0 pt-0.5">
+        <div class="text-xs font-medium" style="color:${isActive?'var(--accent)':isDone?'var(--text)':'var(--text-secondary)'}">${s.title}</div>
+        <div class="text-xs mt-0.5 truncate" style="color:var(--text-tertiary)">${s.desc}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function goToStage(n){
+  STATE.currentStage=Math.max(1,Math.min(5,n));
+  _destroyChart();
+  renderStepNav(); renderStage();
+  document.getElementById('stageLabel').textContent=STATE.currentStage;
+  document.getElementById('stageTitle').textContent=STAGES[STATE.currentStage-1].title;
+  updateButtons();
+}
+function nextStep(){ stopAutoPlay(); if(STATE.currentStage<5)goToStage(STATE.currentStage+1); }
+function prevStep(){ stopAutoPlay(); if(STATE.currentStage>1)goToStage(STATE.currentStage-1); }
+function toggleAutoPlay(){
+  if(STATE.autoPlaying){stopAutoPlay();return;}
+  STATE.autoPlaying=true;
+  const b=document.getElementById('btnAuto'); b.textContent='⏸ Pause';
+  b.className='btn btn-primary flex-1'; advanceAuto();
+}
+function stopAutoPlay(){
+  STATE.autoPlaying=false;
+  if(STATE.autoTimer)clearTimeout(STATE.autoTimer); STATE.autoTimer=null;
+  const b=document.getElementById('btnAuto'); b.textContent='▶ Auto Play';
+  b.className='btn btn-secondary flex-1';
+}
+function advanceAuto(){
+  if(!STATE.autoPlaying)return;
+  if(STATE.currentStage>=5){stopAutoPlay();return;}
+  STATE.autoTimer=setTimeout(()=>{goToStage(STATE.currentStage+1);advanceAuto();},STATE.speed);
+}
+function setSpeed(x){
+  ['spd05','spd10','spd20'].forEach(id=>{document.getElementById(id).className='btn btn-toggle flex-1'});
+  document.getElementById(x===0.5?'spd05':x===1?'spd10':'spd20').className='btn btn-toggle active flex-1';
+  STATE.speed=Math.round(1500/x);
+}
+function resetAll(){
+  stopAutoPlay(); STATE.currentStage=0; STATE.inferenceData=null;
+  renderStepNav(); renderStage(); _destroyChart();
+  document.getElementById('stageLabel').textContent='0';
+  document.getElementById('stageTitle').textContent='Ready';
+  document.getElementById('timingBadge').style.display='none';
+  document.getElementById('paramDetails').innerHTML=`<div class="text-xs" style="color:var(--text-tertiary)">Select a stage to view details</div>`;
+  updateButtons();
+}
+function updateButtons(){
+  document.getElementById('btnPrev').disabled=STATE.currentStage<=1;
+  document.getElementById('btnNext').disabled=STATE.currentStage>=5;
+}
+
+// =========================================================================
+//  Stage Router
+// =========================================================================
+function renderStage(){
+  const canvas=document.getElementById('mainCanvas');
+  const right=document.getElementById('paramDetails');
+  const d=STATE.inferenceData;
+  if(!d||STATE.currentStage===0){
+    document.getElementById('stageTitle').textContent='Ready';
+    canvas.innerHTML=`
+      <div class="flex flex-col items-center justify-center h-full gap-4 anim-fade" style="min-height:60vh">
+        <div style="font-size:56px;opacity:0.08">🧠</div>
+        <div class="text-lg font-medium" style="color:var(--text-secondary)">Select a sample image to begin</div>
+        <div class="text-sm" style="color:var(--text-tertiary)">Click any sample card or upload an image to trigger BLS inference</div>
+        <div class="card-accent mt-2 max-w-md text-xs" style="color:var(--text-secondary);line-height:1.7">
+          <div class="font-semibold mb-1" style="color:var(--accent)">Broad Learning System</div>
+          <p>Flat architecture with random feature mappings + orthogonalized enhancement nodes</p>
+          <p class="mt-1">Closed-form Ridge regression readout — no backpropagation</p>
+          <p class="mt-1">This demo visualizes the full <span class="font-mono" style="color:var(--accent)">6-stage</span> inference pipeline</p>
+        </div>
+      </div>`;
+    right.innerHTML=`<div class="text-xs" style="color:var(--text-tertiary)">Select a stage to view details</div>`;
+    return;
+  }
+  switch(STATE.currentStage){
+    case 1:stage1(canvas,right,d);break; case 2:stage2(canvas,right,d);break;
+    case 3:stage3(canvas,right,d);break; case 4:stage4(canvas,right,d);break;
+    case 5:stage5(canvas,right,d);break;
+  }
+}
+
+// =========================================================================
+//  Helpers
+// =========================================================================
+function stat(label,val,unit=''){
+  return `<div class="stat-mini">
+    <div class="text-xs" style="color:var(--text-tertiary)">${label}</div>
+    <div class="text-sm font-mono mt-1" style="color:var(--accent)">${val}</div>
+    ${unit?`<div class="text-xs mt-0.5" style="color:var(--text-tertiary)">${unit}</div>`:''}
+  </div>`;
+}
+function detailRow(label,val){
+  return `<div class="detail-row">
+    <span class="label">${label}</span>
+    <span class="value">${val}</span>
+  </div>`;
+}
+function stageHeader(title, stageNum, color){
+  return `<div class="flex items-center gap-2.5 mb-4">
+    <div style="width:3px;height:18px;border-radius:2px;background:${color}"></div>
+    <h2 class="text-base font-semibold" style="color:var(--text)">${title}</h2>
+    <span class="stage-badge" style="background:${color}1a;color:${color}">Stage ${stageNum}</span>
+  </div>`;
+}
+function flowNode(label, sublabel, color){
+  return `<div class="px-3 py-2 rounded-md text-xs font-mono text-center" style="background:${color}15;border:1px solid ${color}30;color:${color}">${label}${sublabel?`<br><span style="color:var(--text-tertiary);font-size:10px">${sublabel}</span>`:''}</div>`;
+}
+function flowNodeActive(label, sublabel, color){
+  return `<div class="px-3 py-2 rounded-md text-xs font-mono text-center" style="background:${color}1a;border:1px solid ${color}40;color:${color};box-shadow:0 0 0 1px ${color}20">${label}${sublabel?`<br><span style="color:var(--text-tertiary);font-size:10px">${sublabel}</span>`:''}</div>`;
+}
+
+// =========================================================================
+//  STAGE 1: Input Preprocessing
+// =========================================================================
+function stage1(canvas,right,d){
+  canvas.innerHTML=`
+    <div class="anim-fade p-2">
+      ${stageHeader('Input Preprocessing', 1, HEX.accent)}
+      <div class="flex gap-6 items-start flex-wrap">
+        <div class="card flex-shrink-0" style="width:170px">
+          <div class="text-xs mb-2 text-center" style="color:var(--text-secondary)">Input Image 32×32×3</div>
+          <div class="grid grid-cols-8 gap-px rounded overflow-hidden" style="width:144px;height:144px;margin:0 auto" id="pxGrid"></div>
+        </div>
+        <div class="flex-1 space-y-3" style="min-width:300px">
+          <div class="flex items-center gap-2 flex-wrap">
+            ${flowNode('(32,32,3)','','#5b9cf6')}
+            <span class="flow-arrow"></span>
+            ${flowNode('Normalize','μ=0.5, σ=0.5','#3ec7a8')}
+            <span class="flow-arrow"></span>
+            ${flowNodeActive('(3072,)','flattened','#5b9cf6')}
+          </div>
+          <div class="card">
+            <div class="text-xs mb-2" style="color:var(--text-secondary)">Vector Preview — first 60 dims</div>
+            <div class="flex flex-wrap gap-px" id="vecPrev"></div>
+          </div>
+          <div class="grid grid-cols-4 gap-2">
+            ${stat('Dims', d.inputDim.toLocaleString())}
+            ${stat('Mean', d.inputMean.toFixed(4))}
+            ${stat('Min', d.inputMin.toFixed(3))}
+            ${stat('Max', d.inputMax.toFixed(3))}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  const g=document.getElementById('pxGrid');
+  for(let i=0;i<64;i++){
+    const r=Math.max(0,Math.min(255,Math.floor((d.inputVec[i*48]+1)*127)));
+    const gr=Math.max(0,Math.min(255,Math.floor((d.inputVec[i*48+16]+1)*127)));
+    const b=Math.max(0,Math.min(255,Math.floor((d.inputVec[i*48+32]+1)*127)));
+    g.innerHTML+=`<div class="heat-cell" style="background:rgb(${r},${gr},${b});aspect-ratio:1" title="rgb(${r},${gr},${b})"></div>`;
+  }
+  const vp=document.getElementById('vecPrev');
+  d.inputVec.slice(0,60).forEach(v=>{
+    const alpha=Math.min(1,Math.abs(v)/1.5);
+    vp.innerHTML+=`<div class="heat-cell" style="width:8px;height:8px;background:${v>=0?`rgba(91,156,246,${alpha})`:`rgba(229,115,115,${alpha})`}" title="${v.toFixed(3)}"></div>`;
+  });
+
+  right.innerHTML=`
+    <div class="text-sm font-semibold mb-3" style="color:var(--accent)">Preprocess Params</div>
+    <div>${detailRow('Input Shape','(32, 32, 3)')}${detailRow('Channels','3 (RGB)')}${detailRow('Normalize','μ=0.5, σ=0.5')}${detailRow('Flattened','3,072')}${detailRow('Range',`[${d.inputMin.toFixed(3)}, ${d.inputMax.toFixed(3)}]`)}${detailRow('Mean',d.inputMean.toFixed(4))}</div>
+    <div class="formula-block">
+      <div class="formula-label">Formula</div>
+      <code>x = flatten(normalize(image))</code>
+    </div>`;
+}
+
+// =========================================================================
+//  STAGE 2: Feature Nodes — Tier 1+2 Enhanced Visualization
+// =========================================================================
+function stage2(canvas,right,d){
+  const gc=d.featureGroups.length, gs=d.featureGroups[0].output.length;
+  const allStats = d.featureGroups.map(g => groupStats(g.output));
+  const overallMean = allStats.reduce((s,st)=>s+st.mean,0)/gc;
+  const overallSparsity = allStats.reduce((s,st)=>s+st.sparsityRate,0)/gc;
+
+  canvas.innerHTML=`
+    <div class="anim-fade p-2">
+      ${stageHeader('Feature Node Generation', 2, HEX.feature)}
+      <div class="card-accent mb-4 text-center text-xs">
+        <span class="font-mono font-semibold" style="color:var(--accent)">Zᵢ = ReLU( X·Wᵢ + βᵢ )</span>
+        <span style="color:var(--text-tertiary)">&nbsp; i=1,…,${gc}&nbsp; |&nbsp; Wᵢ∈ℝ<sup>3072×${gs}</sup> (frozen)</span>
+      </div>
+
+      <!-- Row 1: Distribution Histogram (left) + Group Stats Comparison (right) -->
+      <div class="flex gap-4 mb-4 flex-wrap">
+        <div class="card" style="flex:1;min-width:340px">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs font-semibold" style="color:var(--text-secondary)">Activation Distribution (Overlay)</div>
+            <div class="flex gap-1" id="fgTabs">
+              ${d.featureGroups.slice(0,Math.min(gc,5)).map((_,i)=>`
+                <button class="btn btn-toggle ${i<3?'active':''}" style="padding:2px 8px;font-size:10px" onclick="toggleFgTab(${i})">G${i+1}</button>
+              `).join('')}
+            </div>
+          </div>
+          <div style="position:relative;height:200px"><canvas id="featDistChart"></canvas></div>
+          <div class="text-xs mt-1" style="color:var(--text-tertiary)">ReLU output — zero-peak = dead neurons (sparsity)</div>
+        </div>
+
+        <div class="card" style="flex:1;min-width:300px">
+          <div class="text-xs font-semibold mb-2" style="color:var(--text-secondary)">Group Statistics Comparison</div>
+          <div style="position:relative;height:200px"><canvas id="featStatsChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Row 2: Sparsity Gauges + 2D Heatmap Matrix -->
+      <div class="flex gap-4 mb-4 flex-wrap">
+        <div class="card" style="flex:1;min-width:340px">
+          <div class="text-xs font-semibold mb-2" style="color:var(--text-secondary)">Sparsity / Active Rate</div>
+          <div class="grid gap-1.5" style="grid-template-columns:repeat(${Math.min(gc,5)},1fr)" id="fgSparsity"></div>
+          <div class="text-xs mt-2" style="color:var(--text-tertiary)"><span style="color:#e57373">●</span> <30% (dead) &nbsp; <span style="color:#e0a458">●</span> 30-70% &nbsp; <span style="color:#3ec7a8">●</span> >70% (healthy)</div>
+        </div>
+
+        <div class="card" style="flex:1;min-width:300px">
+          <div class="text-xs font-semibold mb-2" style="color:var(--text-secondary)">2D Activation Matrix (all ${gc} groups, 32-dim sample)</div>
+          <div id="fgHeatmapMatrix" class="flex flex-col gap-px"></div>
+        </div>
+      </div>
+    </div>`;
+
+  // --- Sparsity gauges ---
+  document.getElementById('fgSparsity').innerHTML = allStats.map((st,i)=>{
+    const r = 1 - st.sparsityRate;
+    const color = r < 0.3 ? '#e57373' : r < 0.7 ? '#e0a458' : '#3ec7a8';
+    return `<div class="stat-mini text-center">
+      <div class="text-xs font-mono" style="color:var(--text-secondary)">G${i+1}</div>
+      <div class="mt-1.5 prob-bar-track" style="height:4px">
+        <div class="prob-bar-fill" style="width:${r*100}%;background:${color}"></div>
+      </div>
+      <div class="text-xs font-mono mt-0.5" style="color:${color}">${(r*100).toFixed(0)}%</div>
+    </div>`;
+  }).join('');
+
+  // --- 2D Heatmap Matrix ---
+  const fmax = Math.max(...d.featureFlat) || 1;
+  renderHeatmapMatrix(
+    document.getElementById('fgHeatmapMatrix'),
+    d.featureGroups, 32,
+    v => `rgba(91,156,246,${Math.min(1, Math.abs(v)/fmax)*0.8+0.1})`
+  );
+
+  // --- Chart 1: Distribution Histogram (overlay) ---
+  setTimeout(()=>{
+    const distCanvas = document.getElementById('featDistChart');
+    if(!distCanvas) return;
+    const selIndices = [0,1,2];
+    const datasets = selIndices.map(idx => {
+      const { counts, bins } = histogram(d.featureGroups[idx].output, 14, 0, fmax);
+      const colors = ['rgba(91,156,246,0.15)','rgba(62,199,168,0.15)','rgba(224,164,88,0.15)'];
+      const borders = ['#5b9cf6','#3ec7a8','#e0a458'];
+      return {
+        label: `G${idx+1}`,
+        data: counts,
+        backgroundColor: colors[idx % 3],
+        borderColor: borders[idx % 3],
+        borderWidth: 1.5,
+      };
+    });
+    const { bins: labelBins } = histogram(d.featureGroups[0].output, 14, 0, fmax);
+    _chart2 = new Chart(distCanvas, {
+      type:'bar',
+      data:{ labels: labelBins.map(b=>parseFloat(b).toFixed(2)), datasets },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        animation:{duration:400},
+        plugins:{ legend:{display:true,position:'top',labels:{color:'#8b95a3',font:{size:10,family:CHART_FONT_SANS},boxWidth:12,boxHeight:12}},
+          tooltip:{mode:'index'} },
+        scales:{
+          x:{grid:{color:CHART_GRID},ticks:{color:CHART_TICK,font:{size:9,family:CHART_FONT_MONO}},title:{display:true,text:'Activation Value',color:'#5e6875',font:{size:10}}},
+          y:{grid:{color:CHART_GRID},ticks:{color:CHART_TICK,font:{size:9,family:CHART_FONT_MONO}},title:{display:true,text:'Count',color:'#5e6875',font:{size:10}}},
+        },
+      },
+    });
+  }, 60);
+
+  // --- Chart 2: Group Stats Comparison (Mean + Std) ---
+  setTimeout(()=>{
+    const statsCanvas = document.getElementById('featStatsChart');
+    if(!statsCanvas) return;
+    _chart = new Chart(statsCanvas, {
+      type:'bar',
+      data:{
+        labels: allStats.map((_,i)=>`G${i+1}`),
+        datasets:[
+          {label:'Mean', data: allStats.map(st=>st.mean), backgroundColor:'rgba(91,156,246,0.5)', borderColor:'#5b9cf6', borderWidth:1, borderRadius:3, yAxisID:'y' },
+          {label:'Std',  data: allStats.map(st=>st.std),  backgroundColor:'rgba(62,199,168,0.4)', borderColor:'#3ec7a8', borderWidth:1, borderRadius:3, yAxisID:'y' },
+          {label:'Active %', data: allStats.map(st=>(1-st.sparsityRate)*100), type:'line', borderColor:'#e0a458', backgroundColor:'rgba(224,164,88,0.1)', borderWidth:2, fill:false, tension:0.3, yAxisID:'y1', pointRadius:3 },
+        ],
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        animation:{duration:400},
+        plugins:{ legend:{display:true,position:'top',labels:{color:'#8b95a3',font:{size:10,family:CHART_FONT_SANS},boxWidth:12,boxHeight:12}} },
+        scales:{
+          x:{grid:{color:CHART_GRID},ticks:{color:CHART_TICK,font:{size:10,family:CHART_FONT_MONO}}},
+          y:{position:'left',grid:{color:CHART_GRID},ticks:{color:CHART_TICK,font:{size:9,family:CHART_FONT_MONO}},title:{display:true,text:'Mean / Std',color:'#5e6875',font:{size:10}}},
+          y1:{position:'right',grid:{display:false},min:0,max:100,ticks:{color:CHART_TICK,font:{size:9,family:CHART_FONT_MONO},callback:v=>v+'%'},title:{display:true,text:'Active %',color:'#5e6875',font:{size:10}}},
+        },
+      },
+    });
+  }, 80);
+
+  // --- Right Panel ---
+  const fm = d.featureFlat.reduce((a,b)=>a+b,0)/d.featureFlat.length;
+  right.innerHTML=`
+    <div class="text-sm font-semibold mb-3" style="color:var(--accent)">Feature Stats</div>
+    <div>
+      ${detailRow('Groups',gc)}
+      ${detailRow('Group Width',gs)}
+      ${detailRow('Total Dims',(gc*gs).toLocaleString())}
+      ${detailRow('Activation','ReLU')}
+      ${detailRow('Mean (all)',fm.toFixed(4))}
+      ${detailRow('Min',d.fMin.toFixed(3))}
+      ${detailRow('Max',d.fMax.toFixed(3))}
+      ${detailRow('Avg Sparsity',(overallSparsity*100).toFixed(1)+'%')}
+      ${detailRow('Avg Active',((1-overallSparsity)*100).toFixed(1)+'%')}
+    </div>
+    <div class="formula-block">
+      <div class="formula-label">Key</div>
+      <code style="color:var(--text-secondary)">Weights are randomly initialized once<br>and kept fixed — no gradient updates.<br><br>Sparsity = fraction of zero outputs<br>(ReLU dead neurons).</code>
+    </div>`;
+}
+
+// Tab toggle for distribution chart
+function toggleFgTab(idx){
+  if(!_chart2) return;
+  const ds = _chart2.data.datasets;
+  if(idx < ds.length){
+    ds[idx].hidden = !ds[idx].hidden;
+    _chart2.update();
+  }
+}
+
+// =========================================================================
+//  STAGE 3: Enhancement Nodes — Tier 1+2 Enhanced Visualization
+// =========================================================================
+function stage3(canvas,right,d){
+  const gc=d.enhanceGroups.length, gs=d.enhanceGroups[0].output.length, idim=d.featureFlat.length;
+  const allStats = d.enhanceGroups.map(g => groupStats(g.output));
+  const overallSat = allStats.reduce((s,st)=>s+st.satTotalRate,0)/gc;
+  const overallMean = allStats.reduce((s,st)=>s+st.mean,0)/gc;
+
+  // Feature vs Enhancement comparison stats
+  const fStats = d.featureGroups.map(g => groupStats(g.output));
+  const fOverallSparsity = fStats.reduce((s,st)=>s+st.sparsityRate,0)/fStats.length;
+
+  canvas.innerHTML=`
+    <div class="anim-fade p-2">
+      ${stageHeader('Enhancement Node Generation', 3, HEX.enhance)}
+      <div class="card-accent mb-4 text-center text-xs">
+        <span class="font-mono font-semibold" style="color:var(--accent)">Hⱼ = tanh( Zⁿ·Wⱼ + γⱼ )</span>
+        <span style="color:var(--text-tertiary)">&nbsp; s.t. HⱼᵀHⱼ = I&nbsp; (Gram-Schmidt)</span>
+      </div>
+      <div class="flex items-center gap-2 justify-center mb-4 flex-wrap" id="efgFlow"></div>
+
+      <!-- Row 1: tanh Saturation Distribution (left) + Group Stats (right) -->
+      <div class="flex gap-4 mb-4 flex-wrap">
+        <div class="card" style="flex:1;min-width:340px">
+          <div class="text-xs font-semibold mb-2" style="color:var(--text-secondary)">tanh Saturation Distribution [−1, 1]</div>
+          <div style="position:relative;height:200px"><canvas id="enhDistChart"></canvas></div>
+          <div class="text-xs mt-1" style="color:var(--text-tertiary)"><span style="color:#e57373">●</span> Saturation zone (|x|>0.85) &nbsp; <span style="color:#3ec7a8">●</span> Transition &nbsp; <span style="color:#94a3b8">●</span> Linear (|x|<0.25)</div>
+        </div>
+
+        <div class="card" style="flex:1;min-width:300px">
+          <div class="text-xs font-semibold mb-2" style="color:var(--text-secondary)">Group Statistics Comparison</div>
+          <div style="position:relative;height:200px"><canvas id="enhStatsChart"></canvas></div>
+        </div>
+      </div>
+
+      <!-- Row 2: 2D Heatmap Matrix + Feature vs Enhancement Comparison -->
+      <div class="flex gap-4 mb-4 flex-wrap">
+        <div class="card" style="flex:1;min-width:340px">
+          <div class="text-xs font-semibold mb-2" style="color:var(--text-secondary)">2D Activation Matrix (all ${gc} groups, 32-dim sample, tanh)</div>
+          <div id="ehMatrix" class="flex flex-col gap-px"></div>
+          <div class="flex items-center gap-2 mt-2">
+            <span class="text-xs font-mono" style="color:#e57373">−1</span>
+            <div class="flex-1 heat-legend"></div>
+            <span class="text-xs font-mono" style="color:var(--c-enhance)">+1</span>
+          </div>
+        </div>
+
+        <div class="card" style="flex:1;min-width:300px">
+          <div class="text-xs font-semibold mb-3" style="color:var(--text-secondary)">Feature → Enhancement Comparison</div>
+          <div class="space-y-3">
+            <div class="flex items-center gap-3">
+              <div class="text-xs font-mono" style="width:60px;color:var(--c-feature)">ReLU</div>
+              <div class="flex-1">
+                <div class="flex justify-between text-xs mb-0.5">
+                  <span style="color:var(--text-tertiary)">Active Rate</span>
+                  <span class="font-mono" style="color:var(--c-feature)">${((1-fOverallSparsity)*100).toFixed(1)}%</span>
+                </div>
+                <div class="prob-bar-track"><div class="prob-bar-fill" style="width:${(1-fOverallSparsity)*100}%;background:var(--c-feature);opacity:0.6"></div></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-xs font-mono" style="width:60px;color:var(--c-enhance)">tanh</div>
+              <div class="flex-1">
+                <div class="flex justify-between text-xs mb-0.5">
+                  <span style="color:var(--text-tertiary)">Saturation Rate</span>
+                  <span class="font-mono" style="color:var(--c-enhance)">${(overallSat*100).toFixed(1)}%</span>
+                </div>
+                <div class="prob-bar-track"><div class="prob-bar-fill" style="width:${overallSat*100}%;background:var(--c-enhance);opacity:0.6"></div></div>
+              </div>
+            </div>
+            <div class="flex items-center gap-3">
+              <div class="text-xs font-mono" style="width:60px;color:var(--text-tertiary)">ΔMean</div>
+              <div class="flex-1">
+                <div class="flex justify-between text-xs mb-0.5">
+                  <span style="color:var(--text-tertiary)">Shift</span>
+                  <span class="font-mono" style="color:var(--accent)">${(overallMean).toFixed(4)}</span>
+                </div>
+                <div class="text-xs" style="color:var(--text-tertiary)">tanh centers around 0 (zero-mean)</div>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-3">
+              <div class="stat-mini">
+                <div class="text-xs" style="color:var(--text-tertiary)">ReLU Sparsity</div>
+                <div class="text-sm font-mono mt-1" style="color:var(--c-feature)">${(fOverallSparsity*100).toFixed(1)}%</div>
+              </div>
+              <div class="stat-mini">
+                <div class="text-xs" style="color:var(--text-tertiary)">tanh Sat+</div>
+                <div class="text-sm font-mono mt-1" style="color:var(--c-enhance)">${(allStats.reduce((s,st)=>s+st.satPosRate,0)/gc*100).toFixed(1)}%</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  // --- Flow diagram ---
+  document.getElementById('efgFlow').innerHTML=`
+    ${flowNode('Zⁿ',`${idim}d`,'#5b9cf6')}
+    <span class="flow-arrow"></span>
+    ${flowNode('Wⱼ',`${idim}×${gs}`,'#5b9cf6')}
+    <span class="flow-arrow"></span>
+    ${flowNode('tanh+GS','','#3ec7a8')}
+    <span class="flow-arrow"></span>
+    ${flowNodeActive('Hᵐ',`${gc*gs}d`,'#3ec7a8')}
+  `;
+
+  // --- 2D Heatmap Matrix (dual-color: red→teal) ---
+  renderHeatmapMatrix(
+    document.getElementById('ehMatrix'),
+    d.enhanceGroups, 32,
+    v => v >= 0
+      ? `rgba(62,199,168,${Math.min(1, Math.abs(v))*0.8+0.1})`
+      : `rgba(229,115,115,${Math.min(1, Math.abs(v))*0.8+0.1})`
+  );
+
+  // --- Chart 1: tanh Saturation Distribution (color-coded bars) ---
+  setTimeout(()=>{
+    const distCanvas = document.getElementById('enhDistChart');
+    if(!distCanvas) return;
+    // Combine all groups for a comprehensive distribution
+    const allValues = d.enhanceGroups.flatMap(g => g.output);
+    const { bins, counts } = histogram(allValues, 15, -1, 1);
+    const barColors = bins.map(b => {
+      const v = parseFloat(b);
+      if (Math.abs(v) > 0.85) return 'rgba(229,115,115,0.55)';
+      if (Math.abs(v) < 0.25) return 'rgba(148,163,184,0.25)';
+      return 'rgba(62,199,168,0.4)';
+    });
+    _chart2 = new Chart(distCanvas, {
+      type:'bar',
+      data:{ labels: bins.map(b=>parseFloat(b).toFixed(2)), datasets:[{ data:counts, backgroundColor:barColors, borderWidth:0, borderRadius:2 }] },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        animation:{duration:400},
+        plugins:{ legend:{display:false}, tooltip:{callbacks:{title:ctx=>`bin: ${bins[ctx[0].dataIndex]}`,label:ctx=>`count: ${counts[ctx.dataIndex]}`}} },
+        scales:{
+          x:{grid:{color:CHART_GRID},ticks:{color:CHART_TICK,font:{size:9,family:CHART_FONT_MONO}},title:{display:true,text:'Activation Value',color:'#5e6875',font:{size:10}}},
+          y:{grid:{color:CHART_GRID},ticks:{color:CHART_TICK,font:{size:9,family:CHART_FONT_MONO}},title:{display:true,text:'Count',color:'#5e6875',font:{size:10}}},
+        },
+      },
+    });
+  }, 60);
+
+  // --- Chart 2: Group Stats (Mean + Std + Saturation Rate) ---
+  setTimeout(()=>{
+    const statsCanvas = document.getElementById('enhStatsChart');
+    if(!statsCanvas) return;
+    _chart = new Chart(statsCanvas, {
+      type:'bar',
+      data:{
+        labels: allStats.map((_,i)=>`G${i+1}`),
+        datasets:[
+          {label:'Mean', data: allStats.map(st=>st.mean), backgroundColor:'rgba(62,199,168,0.5)', borderColor:'#3ec7a8', borderWidth:1, borderRadius:3, yAxisID:'y' },
+          {label:'Std',  data: allStats.map(st=>st.std),  backgroundColor:'rgba(91,156,246,0.4)', borderColor:'#5b9cf6', borderWidth:1, borderRadius:3, yAxisID:'y' },
+          {label:'Sat %', data: allStats.map(st=>st.satTotalRate*100), type:'line', borderColor:'#e57373', backgroundColor:'rgba(229,115,115,0.1)', borderWidth:2, fill:false, tension:0.3, yAxisID:'y1', pointRadius:3 },
+        ],
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        animation:{duration:400},
+        plugins:{ legend:{display:true,position:'top',labels:{color:'#8b95a3',font:{size:10,family:CHART_FONT_SANS},boxWidth:12,boxHeight:12}} },
+        scales:{
+          x:{grid:{color:CHART_GRID},ticks:{color:CHART_TICK,font:{size:10,family:CHART_FONT_MONO}}},
+          y:{position:'left',grid:{color:CHART_GRID},ticks:{color:CHART_TICK,font:{size:9,family:CHART_FONT_MONO}},title:{display:true,text:'Mean / Std',color:'#5e6875',font:{size:10}}},
+          y1:{position:'right',grid:{display:false},min:0,max:100,ticks:{color:CHART_TICK,font:{size:9,family:CHART_FONT_MONO},callback:v=>v+'%'},title:{display:true,text:'Sat %',color:'#5e6875',font:{size:10}}},
+        },
+      },
+    });
+  }, 80);
+
+  // --- Right Panel ---
+  const em = d.enhanceFlat.reduce((a,b)=>a+b,0)/d.enhanceFlat.length;
+  right.innerHTML=`
+    <div class="text-sm font-semibold mb-3" style="color:var(--accent)">Enhancement Stats</div>
+    <div>
+      ${detailRow('Groups',gc)}
+      ${detailRow('Group Width',gs)}
+      ${detailRow('Total Dims',(gc*gs).toLocaleString())}
+      ${detailRow('Activation','tanh')}
+      ${detailRow('Orthogonalized','GS (QR) ✓')}
+      ${detailRow('Mean (all)',em.toFixed(4))}
+      ${detailRow('Min',d.eMin.toFixed(3))}
+      ${detailRow('Max',d.eMax.toFixed(3))}
+      ${detailRow('Avg Saturation',(overallSat*100).toFixed(1)+'%')}
+      ${detailRow('Sat+ Rate',(allStats.reduce((s,st)=>s+st.satPosRate,0)/gc*100).toFixed(1)+'%')}
+      ${detailRow('Sat− Rate',(allStats.reduce((s,st)=>s+st.satNegRate,0)/gc*100).toFixed(1)+'%')}
+    </div>
+    <div class="formula-block">
+      <div class="formula-label">Key</div>
+      <code style="color:var(--text-secondary)">Orthogonalization (Gram-Schmidt)<br>reduces mutual interference<br>among enhancement groups.<br><br>Saturation: |x|>0.9 — gradient<br>vanishes, limiting expressiveness.</code>
+    </div>`;
+}
+
+// =========================================================================
+//  STAGE 4: Output Mapping (includes brief Feature Concatenation)
+// =========================================================================
+function stage4(canvas,right,d){
+  const fd=d.featureFlat.length, ed=d.enhanceFlat.length, total=d.totalDim;
+  const logitsArr = [...d.logits];
+  canvas.innerHTML=`
+    <div class="anim-fade p-2">
+      ${stageHeader('Output Mapping', 4, HEX.accent)}
+
+      <!-- Brief Feature Concatenation summary -->
+      <div class="card-accent mb-4 text-center text-xs">
+        <span class="font-mono font-semibold" style="color:var(--accent)">A = [Zⁿ | Hᵐ]</span>
+        <span style="color:var(--text-tertiary)">&nbsp;→&nbsp;</span>
+        <span class="font-mono font-semibold" style="color:var(--accent)">Logits = A · W*</span>
+        <div class="text-xs mt-1" style="color:var(--text-tertiary)">A ∈ ℝ<sup>1×${total}</sup> · W* ∈ ℝ<sup>${total}×${d.nClasses}</sup> → Logits ∈ ℝ<sup>1×${d.nClasses}</sup></div>
+      </div>
+
+      <!-- Concatenation flow (compact) -->
+      <div class="flex items-center gap-2 justify-center mb-4 flex-wrap">
+        <div class="card text-center" style="width:${Math.round(fd/total*200)}px;min-width:100px;padding:8px 10px">
+          <div class="text-xs font-semibold" style="color:var(--c-feature)">Zⁿ</div>
+          <div class="text-xs font-mono" style="color:var(--text-secondary)">${fd.toLocaleString()}d</div>
+        </div>
+        <span class="text-base font-bold" style="color:var(--text-tertiary)">⊕</span>
+        <div class="card text-center" style="width:${Math.round(ed/total*200)}px;min-width:100px;padding:8px 10px">
+          <div class="text-xs font-semibold" style="color:var(--c-enhance)">Hᵐ</div>
+          <div class="text-xs font-mono" style="color:var(--text-secondary)">${ed.toLocaleString()}d</div>
+        </div>
+        <span class="text-base font-bold" style="color:var(--text-tertiary)">=</span>
+        <div class="card text-center" style="width:120px;padding:8px 10px;border-color:var(--border-active);box-shadow:var(--shadow-active)">
+          <div class="text-xs font-semibold" style="color:var(--accent)">A (${total.toLocaleString()}d)</div>
+        </div>
+        <span class="text-base font-bold" style="color:var(--text-tertiary)">×</span>
+        <div class="card text-center" style="width:80px;padding:8px 10px">
+          <div class="text-xs font-semibold" style="color:var(--accent)">W*</div>
+          <div class="text-xs font-mono" style="color:var(--text-secondary)">${total.toLocaleString()}×${d.nClasses}</div>
+        </div>
+        <span class="text-base font-bold" style="color:var(--text-tertiary)">=</span>
+        <div class="card text-center anim-soft-pulse" style="width:80px;padding:8px 10px;border-color:var(--border-active)">
+          <div class="text-xs font-semibold" style="color:var(--accent)">Logits</div>
+          <div class="text-xs font-mono" style="color:var(--text-secondary)">${d.nClasses}d</div>
+        </div>
+      </div>
+
+      <!-- Matrix structure bar (compact) -->
+      <div class="card mb-4">
+        <div class="text-xs mb-2" style="color:var(--text-secondary)">Wide Hidden Matrix A — Structure</div>
+        <div class="flex h-6 rounded-md overflow-hidden" id="cBar"></div>
+        <div class="flex justify-between text-xs mt-1.5 font-mono" style="color:var(--text-tertiary)">
+          <span>0</span><span>${Math.floor(total/2).toLocaleString()}</span><span>${total.toLocaleString()}</span>
+        </div>
+      </div>
+
+      <!-- Matrix multiplication visualization -->
+      <div class="flex items-center gap-2 justify-center mb-4">
+        <div class="rounded-md overflow-hidden" style="width:50px;height:170px;border:1px solid var(--border-strong);background:var(--bg-input)" id="mLeft"></div>
+        <span class="font-bold text-lg" style="color:var(--text-tertiary)">×</span>
+        <div class="rounded-md overflow-hidden" style="width:100px;height:170px;border:1px solid var(--border-active);background:var(--bg-input)" id="mRight"></div>
+        <span class="font-bold text-lg" style="color:var(--text-tertiary)">=</span>
+        <div class="rounded-md overflow-hidden" style="width:36px;height:170px;border:1px solid var(--border-active);background:var(--accent-subtle);box-shadow:var(--shadow-active)" id="mResult"></div>
+      </div>
+
+      <!-- Raw Logits -->
+      <div class="card">
+        <div class="text-xs mb-3" style="color:var(--text-secondary)">Raw Logits</div>
+        <div class="grid grid-cols-5 gap-2" id="lgGrid"></div>
+      </div>
+    </div>`;
+
+  // --- Matrix structure bar ---
+  document.getElementById('cBar').innerHTML=`
+    <div class="flex items-center justify-center text-xs font-mono" style="width:${fd/total*100}%;background:var(--c-feature);opacity:0.85;color:#fff">Zⁿ [0:${fd}]</div>
+    <div class="flex items-center justify-center text-xs font-mono" style="width:${ed/total*100}%;background:var(--c-enhance);opacity:0.85;color:#fff">Hᵐ [${fd}:${total}]</div>`;
+
+  // --- Matrix multiplication visualization ---
+  const ml=document.getElementById('mLeft');
+  for(let i=0;i<170;i++){
+    const v=Math.abs(d.totalFeatures[i%d.totalFeatures]||0);
+    ml.innerHTML+=`<div style="height:1px;background:rgba(91,156,246,${Math.min(1,v*1.5)})"></div>`;
+  }
+  const mr=document.getElementById('mRight');
+  for(let i=0;i<85;i++){
+    mr.innerHTML+=`<div style="height:1px;background:rgba(62,199,168,${0.15+((i%8)/8)*0.4})"></div><div style="height:1px;background:rgba(91,156,246,${0.1+((i%8)/8)*0.35})"></div>`;
+  }
+  const mre=document.getElementById('mResult');
+  d.logits.forEach((v,i)=>{
+    const isTop = i===d.top;
+    mre.innerHTML+=`<div style="height:17px;background:${isTop?'var(--accent)':'rgba(91,156,246,0.3)'};opacity:${isTop?0.8:0.4};border-bottom:1px solid rgba(0,0,0,0.2)"></div>`;
+  });
+
+  // --- Raw Logits grid ---
+  document.getElementById('lgGrid').innerHTML=logitsArr.map((v,i)=>{
+    const isTop = i===d.top;
+    return `<div class="text-center">
+      <div class="text-xs font-mono" style="color:${isTop?'var(--accent)':'var(--text-secondary)'}">${CLASSES[i]}</div>
+      <div class="h-14 flex items-end justify-center mt-1">
+        <div class="w-5 rounded-t" style="height:${Math.max(3,Math.abs(v)*8)}px;background:${isTop?'var(--accent)':'var(--c-feature)'};opacity:${isTop?1:0.5}"></div>
+      </div>
+      <div class="text-xs font-mono mt-0.5" style="color:${isTop?'var(--accent)':'var(--text-tertiary)'}">${v.toFixed(1)}</div>
+    </div>`;
+  }).join('');
+
+  // --- Right Panel ---
+  right.innerHTML=`
+    <div class="text-sm font-semibold mb-3" style="color:var(--accent)">Concat & Mapping</div>
+    <div>
+      ${detailRow('Zⁿ dims',fd.toLocaleString())}
+      ${detailRow('Hᵐ dims',ed.toLocaleString())}
+      ${detailRow('Total A dims',total.toLocaleString())}
+      ${detailRow('A shape',`(1, ${total.toLocaleString()})`)}
+      ${detailRow('W* shape',`(${total.toLocaleString()}, ${d.nClasses})`)}
+      ${detailRow('Output shape',`(1, ${d.nClasses})`)}
+      ${detailRow('W* source','Ridge pretrained')}
+    </div>
+    <div class="formula-block">
+      <div class="formula-label">Formula</div>
+      <code>A = [Zⁿ | Hᵐ]<br>W* = (AᵀA + λI)⁻¹AᵀY<br>Logits = A · W*</code>
+    </div>`;
+}
+
+// =========================================================================
+//  STAGE 5: Classification Result
+// =========================================================================
+function stage5(canvas,right,d){
+  const probsArr = [...d.probs];
+  const top2 = probsArr.map((p,i)=>[p,i]).sort((a,b)=>b[0]-a[0])[1];
+
+  canvas.innerHTML=`
+    <div class="anim-fade p-2">
+      ${stageHeader('Classification Result', 5, HEX.result)}
+      <div class="flex gap-5 flex-wrap">
+        <div class="flex-1 card" style="min-width:320px">
+          <div class="text-xs mb-2" style="color:var(--text-secondary)">Softmax Confidence</div>
+          <div style="position:relative;height:260px"><canvas id="confChart"></canvas></div>
+        </div>
+        <div class="card text-center flex flex-col justify-center items-center" style="width:190px;border-color:var(--border-active);box-shadow:var(--shadow-active);background:var(--accent-subtle)">
+          <div class="text-4xl mb-2">${EMOJIS[d.top]}</div>
+          <div class="text-base font-bold" style="color:var(--accent)">${CLASSES[d.top]}</div>
+          <div class="mt-2 text-3xl font-bold font-mono" style="color:var(--accent)">${(d.probs[d.top]*100).toFixed(1)}%</div>
+          <div class="text-xs mt-1" style="color:var(--text-tertiary)">Top-1 Confidence</div>
+        </div>
+      </div>
+      <div class="grid grid-cols-2 gap-3 mt-3">
+        <div class="stat-mini">
+          <div class="text-xs" style="color:var(--text-tertiary)">Inference Time</div>
+          <div class="text-lg font-mono mt-1" style="color:var(--accent)">${d.timingMs||'—'} ms</div>
+        </div>
+        <div class="stat-mini">
+          <div class="text-xs" style="color:var(--text-tertiary)">Top-2</div>
+          <div class="text-sm font-mono mt-1" style="color:var(--c-feature)">${CLASSES[top2[1]]} (${(top2[0]*100).toFixed(1)}%)</div>
+        </div>
+      </div>
+    </div>`;
+  setTimeout(()=>{
+    const container=document.querySelector('#confChart')?.parentElement;
+    if(!container)return;
+    _destroyChart();
+    const oldCanvas=document.getElementById('confChart');
+    if(oldCanvas){ const fresh=document.createElement('canvas'); fresh.id='confChart'; oldCanvas.replaceWith(fresh); }
+    const ctx=document.getElementById('confChart'); if(!ctx)return;
+
+    _chart=new Chart(ctx,{
+      type:'bar',
+      data:{labels:CLASSES,datasets:[{data:probsArr.map(p=>p*100),
+        backgroundColor:probsArr.map((_,i)=>i===d.top?'rgba(91,156,246,0.8)':'rgba(62,199,168,0.3)'),
+        borderColor:probsArr.map((_,i)=>i===d.top?'#5b9cf6':'rgba(62,199,168,0.5)'),
+        borderWidth:1,borderRadius:3}]},
+      options:{
+        indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        animation:{duration:500},
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{grid:{color:CHART_GRID},ticks:{color:CHART_TICK,callback:v=>v+'%',font:{size:10,family:CHART_FONT_MONO}},max:100},
+          y:{grid:{display:false},ticks:{color:'#dde3ec',font:{size:11,family:CHART_FONT_SANS}}}
+        }
+      }
+    });
+  },80);
+  right.innerHTML=`
+    <div class="text-sm font-semibold mb-3" style="color:var(--accent)">Prediction</div>
+    <div>${detailRow('Class',CLASSES[d.top])}${detailRow('Confidence',(d.probs[d.top]*100).toFixed(1)+'%')}${detailRow('Classes',d.nClasses)}</div>
+    <div class="mt-3 pt-3" style="border-top:1px solid var(--border)">
+      <div class="section-label">All Probabilities</div>
+      ${probsArr.map((p,i)=>{
+        const isTop = i===d.top;
+        const barColor = isTop ? 'var(--accent)' : 'var(--c-feature)';
+        return `<div class="flex items-center gap-2 mb-2">
+          <span class="text-xs font-mono" style="width:52px;color:${isTop?'var(--accent)':'var(--text-secondary)'}">${CLASSES[i]}</span>
+          <div class="flex-1 prob-bar-track">
+            <div class="prob-bar-fill" style="width:${p*100}%;background:${barColor};opacity:${isTop?1:0.5}"></div>
+          </div>
+          <span class="text-xs font-mono text-right" style="width:42px;color:${isTop?'var(--accent)':'var(--text-tertiary)'}">${(p*100).toFixed(1)}%</span>
+        </div>`;
+      }).join('')}
+    </div>
+    <div class="formula-block">
+      <div class="formula-label">Formula</div>
+      <code>P(y=k|x) = exp(logitₖ) / Σexp(logitⱼ)</code>
+    </div>`;
+}
+
+// =========================================================================
+//  Keyboard
+// =========================================================================
+document.addEventListener('keydown',e=>{
+  if(e.key==='ArrowRight'){e.preventDefault();nextStep();}
+  if(e.key==='ArrowLeft'){e.preventDefault();prevStep();}
+  if(e.key===' '){e.preventDefault();toggleAutoPlay();}
+  if(e.key==='r'||e.key==='R'){e.preventDefault();resetAll();}
+});
+
+// =========================================================================
+//  Boot
+// =========================================================================
+initSamples();
+selectSample('frog');
+</script>
+</body>
+</html>
